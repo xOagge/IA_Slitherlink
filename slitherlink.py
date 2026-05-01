@@ -1,0 +1,343 @@
+#!/usr/bin/env python3
+# slitherlink.py: Template para implementação do projeto de Inteligência Artificial 2025/2026.
+# Devem alterar as classes e funções neste ficheiro de acordo com as instruções do enunciado.
+# Além das funções e classes sugeridas, podem acrescentar outras que considerem pertinentes.
+
+# Grupo 00:
+# 00000 Nome1
+# 00000 Nome2
+
+import random, copy
+from sys import stdin
+from collections import defaultdict
+
+import utils
+from utils import *
+
+from search import (
+    Problem,
+    Node,
+    astar_search,
+    breadth_first_tree_search,
+    depth_first_tree_search,
+    greedy_search,
+    recursive_best_first_search,
+)
+
+
+class SlitherlinkState:
+    state_id = 0
+
+    def __init__(self, board):
+        self.board:Board = board
+        self.id = SlitherlinkState.state_id
+        SlitherlinkState.state_id += 1
+    
+    def __lt__(self, other):
+        return self.id < other.id
+
+    # TODO: outros metodos da classe
+
+    def get_board(self):
+        return self.board
+
+class Board:
+    """Representação interna de um tabuleiro de Slitherlink."""
+
+    def adjacent_cell(self, cell:tuple) -> list:
+        """Devolve uma lista das células que fazem
+        fronteira com a célula enviada no argumento"""
+
+        #lista de celulas adjacentes
+        a_cells = []
+
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            new_cell = (cell[0] + dr, cell[1] + dc)
+            #checkl if calculated cell is inside board
+            #cell is treated as having indexes
+            if 0 <= new_cell[0] < self.rows and \
+               0 <= new_cell[1] < self.cols:
+                a_cells.append(new_cell)
+
+        return a_cells
+
+
+    def get_cell_edges(self, row:int, column:int) -> list:
+        """Devolve os arestas da célula enviada no argumento"""
+
+        #cada celula segue esta logica, nao existe celulas com regimes
+        #de arestas diferente como no caso de adjacent_cells
+        return [('h',row, column), ('h',row+1, column), \
+                ('v',row, column), ('v',row, column+1)]
+
+    #exemplo retorna numero, o template diz -> list, alterei para ->int
+    def get_active_edges(self, row:int, column:int) -> int:
+        """Devolve o número de arestas ativas"""
+        count = 0
+        for edge in self.drawn_edges:
+            if edge == ('h',row, column) or edge == ('h',row+1, column) \
+               or edge == ('v',row, column) or edge == ('v',row, column+1):
+               count += 1
+        return count
+
+    @staticmethod
+    def parse_instance():
+        """Lê o test do standard input (stdin) que é passado como argumento
+        e retorna uma instância da classe Board.
+
+        Por exemplo:
+            $ python3 pipe.py < test-01.txt
+
+            > from sys import stdin
+            > line = stdin.readline().split()
+        """
+        
+        layout = [line.split() for line in stdin]
+        return Board(layout)
+
+    # TODO: outros metodos da classe ----------------------------------
+
+    def __init__(self, board:list):
+        self.board:list = board
+        self.rows:int = len(board) #row size
+        self.cols:int = len(board[0]) #column size
+
+        #sendo uma board NxM comprimento, temos 
+        # N+1 rows e M columns de linhas horizontais 
+        # N rows e M+1 columns de linhas verticais
+
+        #excerto de codigo feito por gemini pro, ajudou a entender tambem
+        #a logica de como organizar este problema
+        self.all_edges = {
+            ('h', r, c) for r in range(self.rows + 1) for c in range(self.cols)
+        } | {
+            ('v', r, c) for r in range(self.rows) for c in range(self.cols + 1)
+        }
+
+        self.drawn_edges = set()
+
+    #exemplo retorna um numero
+    def get_inactive_edges(self, row:int, column:int) -> int:
+        """Devolve o número de arestas ativas"""
+        count = 4
+        for edge in self.drawn_edges:
+            if edge == ('h',row, column) or edge == ('h',row+1, column) \
+               or edge == ('v',row, column) or edge == ('v',row, column+1):
+               count -= 1
+        return count
+
+    def get_all_edges(self):
+        return self.all_edges
+    
+    def get_all_drawn_edges(self):
+        return self.drawn_edges
+    
+    def get_board(self):
+        return self.board
+
+    def add_action(self, action):
+        """ usado para adicionar uma acao ja verificada como plausivel """
+        self.drawn_edges.add(action)
+
+    def cells_adjacent_to_action(self, action):
+        t, r, c = action #type, row, col
+        #encontrar celulas adjacentes a linha correspondente a action
+        cells_list = []
+        if t == 'h':
+            if r-1 >= 0: cells_list.append((r-1, c))
+            if r < self.rows: cells_list.append((r, c))
+        elif t == 'v':
+            if c-1 >= 0: cells_list.append((r, c-1))
+            if c < self.cols: cells_list.append((r, c))
+        return cells_list
+
+    def is_action_possible(self, action):
+        cells_list = self.cells_adjacent_to_action(action)
+
+        #para as celulas afetadas, vamos ver se ja nao teem linhas limite
+        for cell in cells_list:
+            cell_r, cell_c = cell[0], cell[1]
+            cell_value = self.board[cell_r][cell_c] #valor na celula
+            if cell_value == ".": continue #celuluas com '.' podem tudo
+            n_active_edges = self.get_active_edges(cell_r, cell_c) #n linhas ja ativas
+            #se n linhas ativas e igual ao maximo que a celula pode ter, marcar acao
+            #como inplausivel
+            if n_active_edges >= cell_value:
+                return False
+        #se foi verificado para todas as celulas afetadas por esta acao que nao estao
+        #ja no seu limite, podemos entao considerar esta acao plausivel
+        return True
+
+    #FULL GEMINI PRO, FAZER IMPLEMENTACAO MANUAL
+    def print(self) -> str:
+        """
+        Retorna a representação do tabuleiro no formato de output exigido:
+        4 bits por célula (top, right, bottom, left), separados por tabulação (\t).
+        """
+        output_rows = []
+        
+        for r in range(self.rows):
+            row_cells = []
+            for c in range(self.cols):
+                # Verificar cada uma das 4 arestas da célula (0 ou 1)
+                top = '1' if ('h', r, c) in self.drawn_edges else '0'
+                right = '1' if ('v', r, c + 1) in self.drawn_edges else '0'
+                bottom = '1' if ('h', r + 1, c) in self.drawn_edges else '0'
+                left = '1' if ('v', r, c) in self.drawn_edges else '0'
+                
+                # Juntar os 4 bits da célula
+                cell_repr = top + right + bottom + left
+                row_cells.append(cell_repr)
+                
+            # Juntar todas as células da linha com um tab (\t)
+            output_rows.append("\t".join(row_cells))
+            
+        # Juntar todas as linhas com um newline (\n)
+        return "\n".join(output_rows)
+
+class Slitherlink(Problem):
+    def __init__(self, board: Board, gui=None):
+        """O construtor especifica o estado inicial."""
+        self.board = board
+        self.gui = gui
+
+
+    def actions(self, state: SlitherlinkState):
+        """Retorna uma lista de ações que podem ser executadas a
+        partir do estado passado como argumento."""
+        
+        # actions = []
+        # board = state.get_board()
+        # for edge in board.get_all_edges():
+        #     if edge not in board.drawn_edges():
+        #         actions.append(edge)
+
+        #o gemini sugeriu isto em vez do loop implementado, nao sabia que isto existia
+        #deixo o loop em comentario para o avaliador poder ver, caso queira, aqui foi
+        #um caso de implementar, verificar com o gemini, e sugeriu isto, que gostei
+
+        # todas as acoes fisicamente disponiveis
+        board = state.get_board()
+        actions = board.get_all_edges() - board.get_all_drawn_edges()
+
+        #avaliar acoes que nao quebrem as regras de limite de linhas a volta de uma celula
+        feasable_actions = []
+        for action in actions:
+            if board.is_action_possible(action): feasable_actions.append(action)
+
+        return tuple(feasable_actions)
+
+
+    def result(self, state: SlitherlinkState, action):
+        """Retorna o estado resultante de executar a 'action' sobre
+        'state' passado como argumento. A ação a executar deve ser uma
+        das presentes na lista obtida pela execução de
+        self.actions(state)."""
+
+        board = state.get_board() # board atual
+        newBoard = copy.deepcopy(board) #definir uma nova board
+        for act in action:
+            newBoard.add_action(act) # adicionar acao a nova borda
+        return SlitherlinkState(newBoard) #return do novo estado
+        
+
+
+    def goal_test(self, state: SlitherlinkState):
+        """Retorna True se e só se o estado passado como argumento é
+        um estado objetivo. Deve verificar se todas as posições do tabuleiro
+        estão preenchidas de acordo com as regras do problema."""
+        # TODO
+        #nos exemplos damos brute force de adicionar acoes, mas nos metodos
+        #temos actions, possible actions que nao vao contra as regras dos valores,
+        # entao de forma algoritmica, a unica coisa que temos de verificar e se 
+
+        board = state.get_board()
+        drawn_edges = board.drawn_edges
+
+        # 1. Se o tabuleiro estiver vazio, obviamente não é o objetivo
+        if len(drawn_edges) == 0:
+            return False
+
+        # 2. VERIFICAÇÃO DAS DICAS (Obrigatório)
+        # Temos de garantir que as células têm EXATAMENTE o número de linhas pedido.
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                if hint != '.' and hint is not None:
+                    # Se não tem o número exato de linhas, ainda não acabou
+                    if board.get_active_edges(r, c) != int(hint):
+                        return False
+
+        # 3. VERIFICAÇÃO DO CIRCUITO FECHADO (Grau dos vértices = 2)
+        vertex_degrees = {}
+        
+        for edge in drawn_edges:
+            t, r, c = edge
+            # Determinar os dois vértices (pontos) que esta aresta liga
+            if t == 'h':
+                # Linha horizontal liga o ponto (r, c) ao ponto (r, c+1)
+                v1, v2 = (r, c), (r, c + 1)
+            else: # t == 'v'
+                # Linha vertical liga o ponto (r, c) ao ponto (r+1, c)
+                v1, v2 = (r, c), (r + 1, c)
+
+            # Contar quantas linhas tocam em cada vértice
+            vertex_degrees[v1] = vertex_degrees.get(v1, 0) + 1
+            vertex_degrees[v2] = vertex_degrees.get(v2, 0) + 1
+
+        # Verificar se algum vértice tem pontas soltas (1) ou cruzamentos (3+)
+        for vertex, degree in vertex_degrees.items():
+            if degree != 2:
+                return False
+
+        # Se passou nos testes todos, consideramos que ganhou!
+        return True
+
+    def h(self, node: Node):
+        """Função heuristica utilizada para a procura A*."""
+        # TODO
+        pass
+
+    
+
+
+if __name__ == "__main__":
+    # TODO:
+    # Ler o ficheiro do standard input,
+    # Usar uma técnica de procura para resolver a instância,
+    # Retirar a solução a partir do nó resultante,
+    # Imprimir para o standard output no formato indicado.
+
+
+    # CHECKS FIRST EXAMPLE ---------------------
+    board = Board.parse_instance()
+
+    print(board.get_cell_edges(3,1))
+    print(board.get_cell_edges(4,4))
+
+    # SECOND EXAMPLE -----------------------------------
+
+    problem = Slitherlink(board)
+    initial_state = SlitherlinkState(board)
+    #SEGUNDO O EXAMPLE 2, ISTO DEVIA DAR 1, NAO SEI COMO EQ ISSO FARIA SENTIDO MAS TALVEZ PROXIMOS 
+    #EXERCICIOS AJUDARAO A PERCEBER PORQUE
+    print(initial_state.board.get_inactive_edges(2,1))
+
+    result_state = problem.result(initial_state,[('h',2,1),('v',2, 1),('v',2, 2)])
+    #Mostrar valor naposição(2, 1):
+    print(result_state.board.get_active_edges(2, 1))
+    print(result_state.board.get_inactive_edges(2,1))
+
+    # THIRD EXAMPLE -----------------------------------
+
+
+
+
+    pass
+
+
+
+
+
+
+
