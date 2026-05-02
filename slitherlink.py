@@ -461,8 +461,6 @@ class Slitherlink(Problem):
         # Dividimos por 2 para manter a heurística admissível para o A*
         return score / 2.0
 
-    
-
 
 if __name__ == "__main__":
     # TODO:

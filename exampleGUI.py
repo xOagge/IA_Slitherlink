@@ -14,7 +14,7 @@ def main():
 
     # #blind
     #goal_node = depth_first_tree_search(problem)
-    # goal_node = depth_first_graph_search(problem)
+    goal_node = depth_first_graph_search(problem)
     # goal_node = breadth_first_tree_search(problem)
     # goal_node = breadth_first_graph_search(problem)
     # goal_node = uniform_cost_search(problem)
@@ -22,7 +22,7 @@ def main():
     # goal_node = iterative_deepening_search(problem)
     
     # #heuristic
-    goal_node = astar_search(problem)
+    # goal_node = astar_search(problem)
     # goal_node = greedy_search(problem)
     # goal_node = recursive_best_first_search(problem)
 
