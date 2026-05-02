@@ -92,7 +92,8 @@ class Board:
             > line = stdin.readline().split()
         """
         
-        layout = [line.split() for line in stdin]
+        #layout = [line.split() for line in stdin]
+        layout = [[-1 if cell == '.' else int(cell) for cell in line.split()] for line in stdin]
         return Board(layout)
 
     # TODO: outros metodos da classe ----------------------------------
@@ -133,7 +134,7 @@ class Board:
     def get_all_drawn_edges(self):
         return self.drawn_edges
     
-    def get_board(self):
+    def get_board(self): 
         return self.board
 
     def add_action(self, action):
@@ -206,7 +207,7 @@ class Board:
         for cell in cells_list:
             cell_r, cell_c = cell[0], cell[1]
             cell_value = self.board[cell_r][cell_c] #valor na celula
-            if cell_value == ".": continue #celuluas com '.' podem tudo
+            if cell_value == "." or cell_value == -1: continue #celuluas com '.' podem tudo
             n_active_edges = self.get_active_edges(cell_r, cell_c) #n linhas ja ativas
             #se n linhas ativas e igual ao maximo que a celula pode ter, marcar acao
             #como inplausivel
@@ -273,9 +274,11 @@ class Board:
                 else:
                     v_line += " "
                 
-                # Colocar o valor da célula (ou espaço se for '.')
+                # --- A ÚNICA LINHA ALTERADA ---
+                # Converter para string, mas imprimir espaço se for '-1'
                 val = str(self.board[r][c])
-                v_line += f" {val if val != '.' else ' '} "
+                v_line += f" {val if val != '-1' else ' '} "
+                # ------------------------------
             
             # Última aresta vertical da linha
             if ('v', r, self.cols) in self.drawn_edges:
@@ -295,7 +298,7 @@ class Board:
         last_h_line += "+"
         output.append(last_h_line)
 
-        return "\n".join(output)
+        return "\n".join(output)    
 
 class Slitherlink(Problem):
     def __init__(self, board: Board, gui=None):
@@ -356,9 +359,8 @@ class Slitherlink(Problem):
         print(newBoard.print_pretty())
         print('-----------------------------------\n')
         return SlitherlinkState(newBoard) #return do novo estado
-        
 
-
+    #FULL GEMINI
     def goal_test(self, state: SlitherlinkState):
         """Retorna True se e só se o estado passado como argumento é
         um estado objetivo. Deve verificar se todas as posições do tabuleiro
@@ -369,19 +371,20 @@ class Slitherlink(Problem):
         # entao de forma algoritmica, a unica coisa que temos de verificar e se 
 
         board = state.get_board()
-        drawn_edges = board.drawn_edges
+        drawn_edges = board.get_all_drawn_edges()
 
         # 1. Se o tabuleiro estiver vazio, obviamente não é o objetivo
         if len(drawn_edges) == 0:
             return False
 
         # 2. VERIFICAÇÃO DAS DICAS (Obrigatório)
-        # Temos de garantir que as células têm EXATAMENTE o número de linhas pedido.
         for r in range(board.rows):
             for c in range(board.cols):
                 hint = board.board[r][c]
-                if hint != '.' and hint is not None:
-                    # Se não tem o número exato de linhas, ainda não acabou
+                
+                # Mudado de '.' para -1
+                if hint != -1 and hint is not None: 
+                    
                     if board.get_active_edges(r, c) != int(hint):
                         return False
 
@@ -426,8 +429,5 @@ if __name__ == "__main__":
     # Imprimir para o standard output no formato indicado.
 
     board = Board.parse_instance()
-
-
-
 
 
