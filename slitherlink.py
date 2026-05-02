@@ -105,6 +105,7 @@ class Board:
         #sendo uma board NxM comprimento, temos 
         # N+1 rows e M columns de linhas horizontais 
         # N rows e M+1 columns de linhas verticais
+        #range(X)-> [0,X-1], entao para ter K elementos, range(K)
 
         #excerto de codigo feito por gemini pro, ajudou a entender tambem
         #a logica de como organizar este problema
@@ -140,6 +141,9 @@ class Board:
         self.drawn_edges.add(action)
 
     def cells_adjacent_to_action(self, action):
+        """metodo criado para encontra cells adjacented? afetadas
+        pela criacao de uma linha, vai ser usado para avaliar se esta
+        nova linha vai levar a uma celula exceder o valor limite proprio"""
         t, r, c = action #type, row, col
         #encontrar celulas adjacentes a linha correspondente a action
         cells_list = []
@@ -150,6 +154,50 @@ class Board:
             if c-1 >= 0: cells_list.append((r, c-1))
             if c < self.cols: cells_list.append((r, c))
         return cells_list
+
+    def is_action_adjacent_to_edge(self, action):
+        """metodo criado para verificar se acao vai criar uma edge
+        conectada a uma outra, crucial para afunilar a arvora para solucoes
+        plausiveis mais rapido, da return a true ou false, meaning que a
+        edge action e conectada ou nao"""
+
+        #orgulhoso de ter feito com desenhinhos, usei o gemini pro para confirmar
+        # se logica fazia sentido (mas o clanker nao verificou um erro de que uma
+        #last action fecha um ciclo com count 2, otario)
+
+        #util para saber se edge nao cria um branch, nao aceitavel como solucao
+        count_1 = 0
+        count_2 = 0
+
+        t, r, c = action #type, row, col
+        if t == 'h':
+            for edge in self.drawn_edges:
+                t2, r2, c2 = edge
+                if t2 == 'h':
+                    if r == r2 and c-1 == c2: count_1 += 1
+                    if r == r2 and c+1 == c2: count_2 += 1
+                if t2 == 'v':
+                    if r-1 == r2 and c == c2 or r == r2 and c == c2:
+                        count_1 += 1
+                    if r-1 == r2 and c+1 == c2 or r == r2 and c+1 == c2:
+                        count_2 += 1
+        elif t == 'v':
+            for edge in self.drawn_edges:
+                t2, r2, c2 = edge
+                if t2 == 'h':
+                    if r == r2 and c-1 == c2 or r == r2 and c == c2:
+                        count_1 += 1
+                    if r+1 == r2 and c == c2 or r+1 == r2 and c-1 == c2:
+                        count_2 += 1
+                if t2 == 'v':
+                    if r-1 == r2 and c == c2:
+                        count_1 += 1
+                    if r+1 == r2 and c == c2:
+                        count_2 += 1
+        # nenhum vertice tem branch, e esta conectado em pelo menos um dos lados
+        if count_1 <= 1 and count_2 <= 1 and count_1 + count_2 >= 1: 
+            return True
+        return False
 
     def is_action_possible(self, action):
         cells_list = self.cells_adjacent_to_action(action)
@@ -162,7 +210,7 @@ class Board:
             n_active_edges = self.get_active_edges(cell_r, cell_c) #n linhas ja ativas
             #se n linhas ativas e igual ao maximo que a celula pode ter, marcar acao
             #como inplausivel
-            if n_active_edges >= cell_value:
+            if n_active_edges >= int(cell_value):
                 return False
         #se foi verificado para todas as celulas afetadas por esta acao que nao estao
         #ja no seu limite, podemos entao considerar esta acao plausivel
@@ -195,36 +243,97 @@ class Board:
         # Juntar todas as linhas com um newline (\n)
         return "\n".join(output_rows)
 
+    #FULL GEMINI FAST, UTIL PARA VISUALIZAR
+    def print_pretty(self) -> str:
+        """
+        Retorna uma representação visual do tabuleiro para debugging.
+        +---0---+   +-------+
+        |       |   |       |
+        +-------+   2       |
+        """
+        output = []
+        
+        for r in range(self.rows):
+            # 1. Linha das arestas HORIZONTAIS e Vértices
+            h_line = ""
+            for c in range(self.cols):
+                h_line += "+"
+                if ('h', r, c) in self.drawn_edges:
+                    h_line += "---"
+                else:
+                    h_line += "   "
+            h_line += "+" # Último vértice da linha
+            output.append(h_line)
+
+            # 2. Linha das arestas VERTICAIS e Valores das Células
+            v_line = ""
+            for c in range(self.cols):
+                if ('v', r, c) in self.drawn_edges:
+                    v_line += "|"
+                else:
+                    v_line += " "
+                
+                # Colocar o valor da célula (ou espaço se for '.')
+                val = str(self.board[r][c])
+                v_line += f" {val if val != '.' else ' '} "
+            
+            # Última aresta vertical da linha
+            if ('v', r, self.cols) in self.drawn_edges:
+                v_line += "|"
+            else:
+                v_line += " "
+            output.append(v_line)
+
+        # 3. Linha HORIZONTAL final (fundo do tabuleiro)
+        last_h_line = ""
+        for c in range(self.cols):
+            last_h_line += "+"
+            if ('h', self.rows, c) in self.drawn_edges:
+                last_h_line += "---"
+            else:
+                last_h_line += "   "
+        last_h_line += "+"
+        output.append(last_h_line)
+
+        return "\n".join(output)
+
 class Slitherlink(Problem):
     def __init__(self, board: Board, gui=None):
         """O construtor especifica o estado inicial."""
         self.board = board
         self.gui = gui
 
+        # com erroa  correr example 4 percebi que pare seguir o template
+        #em search.py e necessario esta variavel
+        initial_state = SlitherlinkState(board)
+        self.initial = initial_state
+
 
     def actions(self, state: SlitherlinkState):
         """Retorna uma lista de ações que podem ser executadas a
         partir do estado passado como argumento."""
-        
-        # actions = []
-        # board = state.get_board()
-        # for edge in board.get_all_edges():
-        #     if edge not in board.drawn_edges():
-        #         actions.append(edge)
+    
 
-        #o gemini sugeriu isto em vez do loop implementado, nao sabia que isto existia
-        #deixo o loop em comentario para o avaliador poder ver, caso queira, aqui foi
-        #um caso de implementar, verificar com o gemini, e sugeriu isto, que gostei
+        # ORDEM, FREE EDGES -> CONTINUACOES EM LINHA -> NAO EXCEDE VALOR DE CELULAS
+        # esta ordem parece ser optimizada para dar narrow dawn das possibilidades
 
         # todas as acoes fisicamente disponiveis
         board = state.get_board()
         actions = board.get_all_edges() - board.get_all_drawn_edges()
 
+        #de todas as opcoes de acoes, vou encontrar as que sao adjacentes e ao criam branches
+        adjacent_actions = []
+        if len(board.get_all_drawn_edges()) != 0:
+            for action in actions:
+                if board.is_action_adjacent_to_edge(action):
+                    adjacent_actions.append(action)
+        else: adjacent_actions = actions
+
         #avaliar acoes que nao quebrem as regras de limite de linhas a volta de uma celula
         feasable_actions = []
-        for action in actions:
+        for action in adjacent_actions:
             if board.is_action_possible(action): feasable_actions.append(action)
-
+        
         return tuple(feasable_actions)
 
 
@@ -236,8 +345,16 @@ class Slitherlink(Problem):
 
         board = state.get_board() # board atual
         newBoard = copy.deepcopy(board) #definir uma nova board
-        for act in action:
-            newBoard.add_action(act) # adicionar acao a nova borda
+
+        #se action e um tuplo, e elementos sao uma string, entao e single action
+        if isinstance(action, tuple) and isinstance(action[0], str):
+            newBoard.add_action(action)
+        #caso contrario, assumimos e um tuplo de variasa acoes, como nos exemplos
+        else:
+            for act in action:
+                newBoard.add_action(act) # adicionar acao a nova borda
+        print(newBoard.print_pretty())
+        print('-----------------------------------\n')
         return SlitherlinkState(newBoard) #return do novo estado
         
 
@@ -308,34 +425,7 @@ if __name__ == "__main__":
     # Retirar a solução a partir do nó resultante,
     # Imprimir para o standard output no formato indicado.
 
-
-    # CHECKS FIRST EXAMPLE ---------------------
     board = Board.parse_instance()
-
-    print(board.get_cell_edges(3,1))
-    print(board.get_cell_edges(4,4))
-
-    # SECOND EXAMPLE -----------------------------------
-
-    problem = Slitherlink(board)
-    initial_state = SlitherlinkState(board)
-    #SEGUNDO O EXAMPLE 2, ISTO DEVIA DAR 1, NAO SEI COMO EQ ISSO FARIA SENTIDO MAS TALVEZ PROXIMOS 
-    #EXERCICIOS AJUDARAO A PERCEBER PORQUE
-    print(initial_state.board.get_inactive_edges(2,1))
-
-    result_state = problem.result(initial_state,[('h',2,1),('v',2, 1),('v',2, 2)])
-    #Mostrar valor naposição(2, 1):
-    print(result_state.board.get_active_edges(2, 1))
-    print(result_state.board.get_inactive_edges(2,1))
-
-    # THIRD EXAMPLE -----------------------------------
-
-
-
-
-    pass
-
-
 
 
 
