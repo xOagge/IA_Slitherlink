@@ -415,8 +415,51 @@ class Slitherlink(Problem):
 
     def h(self, node: Node):
         """Função heuristica utilizada para a procura A*."""
-        # TODO
-        pass
+        board = node.state.get_board()
+        
+        # 1. OPTIMIZAÇÃO EXTREMA: Contar todas as arestas numa única passagem
+        # Em vez de chamar get_active_edges() que faz loops repetidos,
+        # mapeamos quais células cada aresta toca num único loop rápido.
+        cell_active_edges = {}
+        for edge in board.drawn_edges:
+            t, r, c = edge
+            if t == 'h':
+                # Linha horizontal afeta a célula abaixo (r, c) e acima (r-1, c)
+                if r < board.rows: 
+                    cell_active_edges[(r, c)] = cell_active_edges.get((r, c), 0) + 1
+                if r - 1 >= 0: 
+                    cell_active_edges[(r - 1, c)] = cell_active_edges.get((r - 1, c), 0) + 1
+            elif t == 'v':
+                # Linha vertical afeta a célula à direita (r, c) e à esquerda (r, c-1)
+                if c < board.cols: 
+                    cell_active_edges[(r, c)] = cell_active_edges.get((r, c), 0) + 1
+                if c - 1 >= 0: 
+                    cell_active_edges[(r, c - 1)] = cell_active_edges.get((r, c - 1), 0) + 1
+
+        # 2. LÓGICA DE PESOS (Weighted Logic)
+        score = 0.0
+        
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                
+                if hint != -1:
+                    # Pegar o número de linhas ativas deste dicionário rápido
+                    active = cell_active_edges.get((r, c), 0)
+                    missing = hint - active
+                    
+                    if missing > 0:
+                        # PESOS ESTRATÉGICOS: 
+                        # Obriga a IA a resolver os '3's primeiro, depois os '2's.
+                        if hint == 3:
+                            score += missing * 3.0  # Alta prioridade!
+                        elif hint == 2:
+                            score += missing * 1.5  # Prioridade média
+                        else:
+                            score += missing * 1.0  # Prioridade normal (hint == 1)
+
+        # Dividimos por 2 para manter a heurística admissível para o A*
+        return score / 2.0
 
     
 

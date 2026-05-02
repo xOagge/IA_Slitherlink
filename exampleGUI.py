@@ -2,7 +2,7 @@ import sys
 import tkinter as tk
 from slitherlink import Board, SlitherlinkState, Slitherlink
 from slitherlink_gui import SlitherlinkGUI
-from search import depth_first_tree_search # (or whatever search you are using)
+from search import * # (or whatever search you are using)
 
 def main():
     #declare board
@@ -11,7 +11,25 @@ def main():
 
     #find solution
     problem = Slitherlink(board)
-    goal_node = depth_first_tree_search(problem)
+
+    # #blind
+    #goal_node = depth_first_tree_search(problem)
+    # goal_node = depth_first_graph_search(problem)
+    # goal_node = breadth_first_tree_search(problem)
+    # goal_node = breadth_first_graph_search(problem)
+    # goal_node = uniform_cost_search(problem)
+    # goal_node = depth_limited_search(problem)
+    # goal_node = iterative_deepening_search(problem)
+    
+    # #heuristic
+    goal_node = astar_search(problem)
+    # goal_node = greedy_search(problem)
+    # goal_node = recursive_best_first_search(problem)
+
+    # #local search
+    # goal_node = hill_climbing(problem)
+    # goal_node = simulated_annealing(problem)
+    # goal_node = genetic_search(problem)
 
     #Criar a GUIantes deiniciar o vosso program
     root= tk.Tk()
