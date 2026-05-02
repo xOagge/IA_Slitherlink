@@ -40,6 +40,20 @@ class SlitherlinkState:
 
     def get_board(self):
         return self.board
+    
+
+    # GEMINI PRO 
+    def __eq__(self, other):
+        # Se as duas boards têm exatamente o mesmo set de linhas desenhadas,
+        # significa que o tabuleiro está visualmente idêntico.
+        if not isinstance(other, SlitherlinkState):
+            return False
+        return self.board.drawn_edges == other.board.drawn_edges
+
+    def __hash__(self):
+        # Transforma o set de edges numa versão 'congelada' (frozenset)
+        # para que o algoritmo consiga usar isto como chave de memória rápida.
+        return hash(frozenset(self.board.drawn_edges))
 
 class Board:
     """Representação interna de um tabuleiro de Slitherlink."""
@@ -413,6 +427,7 @@ class Slitherlink(Problem):
         # Se passou nos testes todos, consideramos que ganhou!
         return True
 
+    # GEMINI PRO
     def h(self, node: Node):
         """Função heuristica utilizada para a procura A*."""
         board = node.state.get_board()
