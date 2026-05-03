@@ -41,7 +41,6 @@ class SlitherlinkState:
     def get_board(self):
         return self.board
     
-
     # GEMINI PRO 
     def __eq__(self, other):
         # Se as duas boards têm exatamente o mesmo set de linhas desenhadas,
@@ -88,7 +87,7 @@ class Board:
     def get_active_edges(self, row:int, column:int) -> int:
         """Devolve o número de arestas ativas"""
         count = 0
-        for edge in self.drawn_edges:
+        for edge in self.all_drawn_edges:
             if edge == ('h',row, column) or edge == ('h',row+1, column) \
                or edge == ('v',row, column) or edge == ('v',row, column+1):
                count += 1
@@ -122,21 +121,31 @@ class Board:
         # N rows e M+1 columns de linhas verticais
         #range(X)-> [0,X-1], entao para ter K elementos, range(K)
 
-        #excerto de codigo feito por gemini pro, ajudou a entender tambem
-        #a logica de como organizar este problema
+        #esta definicao foi feita por gemini pro
         self.all_edges = {
             ('h', r, c) for r in range(self.rows + 1) for c in range(self.cols)
         } | {
             ('v', r, c) for r in range(self.rows) for c in range(self.cols + 1)
         }
+        #vai ser aplicado constrainsts de proibicao
+        self.allowed_edges = self.all_edges
 
+        # separados devido a prints serem apenas as manualmente desenhadas
         self.drawn_edges = set()
+        #vai ser guardada as mandatory edges, imutavel
+        self.mandatory_drawn_edges = set()
+
+
+    @property
+    def all_drawn_edges(self):
+        """ uniao de edges desenhadas e obrigatorias"""
+        return self.drawn_edges | self.mandatory_drawn_edges
 
     #exemplo retorna um numero
     def get_inactive_edges(self, row:int, column:int) -> int:
         """Devolve o número de arestas ativas"""
         count = 4
-        for edge in self.drawn_edges:
+        for edge in self.all_drawn_edges:
             if edge == ('h',row, column) or edge == ('h',row+1, column) \
                or edge == ('v',row, column) or edge == ('v',row, column+1):
                count -= 1
@@ -144,10 +153,7 @@ class Board:
 
     def get_all_edges(self):
         return self.all_edges
-    
-    def get_all_drawn_edges(self):
-        return self.drawn_edges
-    
+  
     def get_board(self): 
         return self.board
 
@@ -186,7 +192,7 @@ class Board:
 
         t, r, c = action #type, row, col
         if t == 'h':
-            for edge in self.drawn_edges:
+            for edge in self.all_drawn_edges:
                 t2, r2, c2 = edge
                 if t2 == 'h':
                     if r == r2 and c-1 == c2: count_1 += 1
@@ -197,7 +203,7 @@ class Board:
                     if r-1 == r2 and c+1 == c2 or r == r2 and c+1 == c2:
                         count_2 += 1
         elif t == 'v':
-            for edge in self.drawn_edges:
+            for edge in self.all_drawn_edges:
                 t2, r2, c2 = edge
                 if t2 == 'h':
                     if r == r2 and c-1 == c2 or r == r2 and c == c2:
@@ -259,12 +265,24 @@ class Board:
         return "\n".join(output_rows)
 
     #FULL GEMINI FAST, UTIL PARA VISUALIZAR
-    def print_pretty(self) -> str:
+    def print_complete(self) -> str:
         """
         Retorna uma representação visual do tabuleiro para debugging.
         +---0---+   +-------+
         |       |   |       |
         +-------+   2       |
+
+        Diferente do print anterior, o anterior da print a edges em 
+        self.drawn_edges, esta da print de self.all_drawn_edges
+
+        Improtante separar porque exemplos3 quer as linhas apenas manualmente
+        desenhadas, e para podermos visualizar as linhas todas/o desenho completo
+        temos este print. o print() nos testes publicos prob vai ter de dar a
+        solucao, entao para isso, quando encontramos solucao, adicionamos 
+        os mandatory a print(), assim, adicioanr manualmente edges, da print
+        apenas das edges desenhadas, e quando encontrar solucao, da print a tudo
+
+        Este metodo e bom para eu, o utilizador, visualizar o progresso da procura
         """
         output = []
         
@@ -273,7 +291,7 @@ class Board:
             h_line = ""
             for c in range(self.cols):
                 h_line += "+"
-                if ('h', r, c) in self.drawn_edges:
+                if ('h', r, c) in self.all_drawn_edges:
                     h_line += "---"
                 else:
                     h_line += "   "
@@ -283,7 +301,7 @@ class Board:
             # 2. Linha das arestas VERTICAIS e Valores das Células
             v_line = ""
             for c in range(self.cols):
-                if ('v', r, c) in self.drawn_edges:
+                if ('v', r, c) in self.all_drawn_edges:
                     v_line += "|"
                 else:
                     v_line += " "
@@ -295,7 +313,7 @@ class Board:
                 # ------------------------------
             
             # Última aresta vertical da linha
-            if ('v', r, self.cols) in self.drawn_edges:
+            if ('v', r, self.cols) in self.all_drawn_edges:
                 v_line += "|"
             else:
                 v_line += " "
@@ -305,25 +323,43 @@ class Board:
         last_h_line = ""
         for c in range(self.cols):
             last_h_line += "+"
-            if ('h', self.rows, c) in self.drawn_edges:
+            if ('h', self.rows, c) in self.all_drawn_edges:
                 last_h_line += "---"
             else:
                 last_h_line += "   "
         last_h_line += "+"
         output.append(last_h_line)
+        output.append('\n-----------------------------------\n')
 
         return "\n".join(output)    
 
 class Slitherlink(Problem):
     def __init__(self, board: Board, gui=None):
         """O construtor especifica o estado inicial."""
-        self.board = board
+
         self.gui = gui
 
-        # com erroa  correr example 4 percebi que pare seguir o template
-        #em search.py e necessario esta variavel
+        # ----------  edges obrigatorias e proibidas ------------
+        from constraint_propagator import ConstraintPropagator
+        temp_state = SlitherlinkState(board)
+        propagator = ConstraintPropagator(temp_state)
+        # obter constrainsts
+        forbidden = propagator.unallowed_edges()
+        mandatory = propagator.mandatory_edges()
+        #remover proibicoes removendo as edges proibidas de allowed_edges
+        board.allowed_edges = board.allowed_edges - set(forbidden)
+        #guardar as mandatory edges
+        board.mandatory_drawn_edges = mandatory
+
+        #print para eu visualizar
+        # print("Mandatory Edges")
+        # print(board.print_complete())
+
+        # com errou a correr example 4 percebi que para seguir o template
+        #em search.py e necessario esta variavel self.initial
         initial_state = SlitherlinkState(board)
         self.initial = initial_state
+        
 
 
     def actions(self, state: SlitherlinkState):
@@ -335,12 +371,12 @@ class Slitherlink(Problem):
         # esta ordem parece ser optimizada para dar narrow dawn das possibilidades
 
         # todas as acoes fisicamente disponiveis
-        board = state.get_board()
-        actions = board.get_all_edges() - board.get_all_drawn_edges()
+        board = state.board
+        actions = board.allowed_edges - board.all_drawn_edges
 
         #de todas as opcoes de acoes, vou encontrar as que sao adjacentes e ao criam branches
         adjacent_actions = []
-        if len(board.get_all_drawn_edges()) != 0:
+        if len(board.all_drawn_edges) != 0:
             for action in actions:
                 if board.is_action_adjacent_to_edge(action):
                     adjacent_actions.append(action)
@@ -370,8 +406,7 @@ class Slitherlink(Problem):
         else:
             for act in action:
                 newBoard.add_action(act) # adicionar acao a nova borda
-        print(newBoard.print_pretty())
-        print('-----------------------------------\n')
+        print(newBoard.print_complete())
         return SlitherlinkState(newBoard) #return do novo estado
 
     #FULL GEMINI
@@ -385,7 +420,7 @@ class Slitherlink(Problem):
         # entao de forma algoritmica, a unica coisa que temos de verificar e se 
 
         board = state.get_board()
-        drawn_edges = board.get_all_drawn_edges()
+        drawn_edges = board.all_drawn_edges
 
         # 1. Se o tabuleiro estiver vazio, obviamente não é o objetivo
         if len(drawn_edges) == 0:
@@ -425,6 +460,9 @@ class Slitherlink(Problem):
                 return False
 
         # Se passou nos testes todos, consideramos que ganhou!
+        #temos de, como escrito em print_complete, para o print() dar a solucao 
+        #toda, adicionar os mandatory_edges a drawn_edges
+        board.drawn_edges = board.all_drawn_edges
         return True
 
     # GEMINI PRO
@@ -436,7 +474,7 @@ class Slitherlink(Problem):
         # Em vez de chamar get_active_edges() que faz loops repetidos,
         # mapeamos quais células cada aresta toca num único loop rápido.
         cell_active_edges = {}
-        for edge in board.drawn_edges:
+        for edge in board.all_drawn_edges:
             t, r, c = edge
             if t == 'h':
                 # Linha horizontal afeta a célula abaixo (r, c) e acima (r-1, c)
