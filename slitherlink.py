@@ -129,6 +129,8 @@ class Board:
         }
         #vai ser aplicado constrainsts de proibicao
         self.allowed_edges = self.all_edges
+        #guardar as edges nao permitidas
+        self.unallowed_edges = set()
 
         # separados devido a prints serem apenas as manualmente desenhadas
         self.drawn_edges = set()
@@ -266,73 +268,72 @@ class Board:
 
     #FULL GEMINI FAST, UTIL PARA VISUALIZAR
     def print_complete(self) -> str:
-        """
-        Retorna uma representação visual do tabuleiro para debugging.
-        +---0---+   +-------+
-        |       |   |       |
-        +-------+   2       |
+            """
+            Retorna uma representação visual do tabuleiro para debugging.
+            + x +   +-------+
+            x   |   |       |
+            +---+   2       x
 
-        Diferente do print anterior, o anterior da print a edges em 
-        self.drawn_edges, esta da print de self.all_drawn_edges
+            As arestas desenhadas usam '---' e '|'.
+            As arestas proibidas usam ' x ' e 'x'.
+            """
+            output = []
+            
+            # Fallback seguro caso a variável unallowed_edges ainda não exista no board
+            unallowed = getattr(self, 'unallowed_edges', set())
+            
+            for r in range(self.rows):
+                # 1. Linha das arestas HORIZONTAIS e Vértices
+                h_line = ""
+                for c in range(self.cols):
+                    h_line += "+"
+                    if ('h', r, c) in self.all_drawn_edges:
+                        h_line += "---"
+                    elif ('h', r, c) in unallowed:
+                        h_line += " x "  # Representação visual da proibição horizontal
+                    else:
+                        h_line += "   "
+                h_line += "+" # Último vértice da linha
+                output.append(h_line)
 
-        Improtante separar porque exemplos3 quer as linhas apenas manualmente
-        desenhadas, e para podermos visualizar as linhas todas/o desenho completo
-        temos este print. o print() nos testes publicos prob vai ter de dar a
-        solucao, entao para isso, quando encontramos solucao, adicionamos 
-        os mandatory a print(), assim, adicioanr manualmente edges, da print
-        apenas das edges desenhadas, e quando encontrar solucao, da print a tudo
-
-        Este metodo e bom para eu, o utilizador, visualizar o progresso da procura
-        """
-        output = []
-        
-        for r in range(self.rows):
-            # 1. Linha das arestas HORIZONTAIS e Vértices
-            h_line = ""
-            for c in range(self.cols):
-                h_line += "+"
-                if ('h', r, c) in self.all_drawn_edges:
-                    h_line += "---"
-                else:
-                    h_line += "   "
-            h_line += "+" # Último vértice da linha
-            output.append(h_line)
-
-            # 2. Linha das arestas VERTICAIS e Valores das Células
-            v_line = ""
-            for c in range(self.cols):
-                if ('v', r, c) in self.all_drawn_edges:
+                # 2. Linha das arestas VERTICAIS e Valores das Células
+                v_line = ""
+                for c in range(self.cols):
+                    if ('v', r, c) in self.all_drawn_edges:
+                        v_line += "|"
+                    elif ('v', r, c) in unallowed:
+                        v_line += "x"    # Representação visual da proibição vertical
+                    else:
+                        v_line += " "
+                    
+                    # Converter para string, mas imprimir espaço se for '-1'
+                    val = str(self.board[r][c])
+                    v_line += f" {val if val != '-1' else ' '} "
+                
+                # Última aresta vertical da linha
+                if ('v', r, self.cols) in self.all_drawn_edges:
                     v_line += "|"
+                elif ('v', r, self.cols) in unallowed:
+                    v_line += "x"
                 else:
                     v_line += " "
-                
-                # --- A ÚNICA LINHA ALTERADA ---
-                # Converter para string, mas imprimir espaço se for '-1'
-                val = str(self.board[r][c])
-                v_line += f" {val if val != '-1' else ' '} "
-                # ------------------------------
-            
-            # Última aresta vertical da linha
-            if ('v', r, self.cols) in self.all_drawn_edges:
-                v_line += "|"
-            else:
-                v_line += " "
-            output.append(v_line)
+                output.append(v_line)
 
-        # 3. Linha HORIZONTAL final (fundo do tabuleiro)
-        last_h_line = ""
-        for c in range(self.cols):
+            # 3. Linha HORIZONTAL final (fundo do tabuleiro)
+            last_h_line = ""
+            for c in range(self.cols):
+                last_h_line += "+"
+                if ('h', self.rows, c) in self.all_drawn_edges:
+                    last_h_line += "---"
+                elif ('h', self.rows, c) in unallowed:
+                    last_h_line += " x "
+                else:
+                    last_h_line += "   "
             last_h_line += "+"
-            if ('h', self.rows, c) in self.all_drawn_edges:
-                last_h_line += "---"
-            else:
-                last_h_line += "   "
-        last_h_line += "+"
-        output.append(last_h_line)
-        output.append('\n-----------------------------------\n')
+            output.append(last_h_line)
+            output.append('\n-----------------------------------\n')
 
-        return "\n".join(output)    
-
+            return "\n".join(output)    
 class Slitherlink(Problem):
     def __init__(self, board: Board, gui=None):
         """O construtor especifica o estado inicial."""
@@ -347,13 +348,16 @@ class Slitherlink(Problem):
         forbidden = propagator.unallowed_edges()
         mandatory = propagator.mandatory_edges()
         #remover proibicoes removendo as edges proibidas de allowed_edges
+        #parece complicado, mas assim temos os forbidden, com verificacao que todas as 
+        #edge coordinates percencem a borda. mais por questao de consistencia
+        board.unallowed_edges = board.allowed_edges - (board.allowed_edges - set(forbidden))
         board.allowed_edges = board.allowed_edges - set(forbidden)
         #guardar as mandatory edges
         board.mandatory_drawn_edges = mandatory
 
         #print para eu visualizar
-        # print("Mandatory Edges")
-        # print(board.print_complete())
+        print("Mandatory Edges")
+        print(board.print_complete())
 
         # com errou a correr example 4 percebi que para seguir o template
         #em search.py e necessario esta variavel self.initial
@@ -361,10 +365,12 @@ class Slitherlink(Problem):
         self.initial = initial_state
         
 
-
     def actions(self, state: SlitherlinkState):
         """Retorna uma lista de ações que podem ser executadas a
         partir do estado passado como argumento."""
+
+        print("\n--- A explorar o seguinte estado: ---")
+        print(state.board.print_complete())
     
 
         # ORDEM, FREE EDGES -> CONTINUACOES EM LINHA -> NAO EXCEDE VALOR DE CELULAS
@@ -406,7 +412,6 @@ class Slitherlink(Problem):
         else:
             for act in action:
                 newBoard.add_action(act) # adicionar acao a nova borda
-        print(newBoard.print_complete())
         return SlitherlinkState(newBoard) #return do novo estado
 
     #FULL GEMINI
