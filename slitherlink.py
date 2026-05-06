@@ -335,18 +335,25 @@ class Board:
 
             return "\n".join(output)    
 class Slitherlink(Problem):
-    def __init__(self, board: Board, gui=None):
+       def __init__(self, board: Board, gui=None):
         """O construtor especifica o estado inicial."""
 
         self.gui = gui
 
         # ----------  edges obrigatorias e proibidas ------------
         from constraint_propagator import ConstraintPropagator
+        from edge_trigger_resolver import EdgeTriggerResolver
         temp_state = SlitherlinkState(board)
         propagator = ConstraintPropagator(temp_state)
+
         # obter constrainsts
-        forbidden = propagator.unallowed_edges()
-        mandatory = propagator.mandatory_edges()
+        # forbidden = propagator.unallowed_edges() - Passou a comentário de modo a dar lugar ao que está abaixo
+        # mandatory = propagator.mandatory_edges() 
+
+        #Feita alteração de modo a incluir o EdgeTriggerResolver
+        resolver = EdgeTriggerResolver(temp_state)
+        mandatory, forbidden = resolver.resolve_complete()
+
         #remover proibicoes removendo as edges proibidas de allowed_edges
         #parece complicado, mas assim temos os forbidden, com verificacao que todas as 
         #edge coordinates percencem a borda. mais por questao de consistencia
