@@ -1,6 +1,7 @@
 from slitherlink import Board, SlitherlinkState
 from constraint_propagator import ConstraintPropagator
 
+#Realizado com recurso a Deepseek
 class EdgeTriggerResolver:
     """
     Resolve ambiguidades em padrões complexos, usando lógica de "trigger edges" (desenhadas a verde no esquema)
