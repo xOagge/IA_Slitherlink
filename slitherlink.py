@@ -502,12 +502,9 @@ class Slitherlink(Problem):
     def goal_test(self, state: SlitherlinkState):
         """Retorna True se e só se o estado passado como argumento é
         um estado objetivo. Deve verificar se todas as posições do tabuleiro
-        estão preenchidas de acordo com as regras do problema."""
-        # TODO
-        #nos exemplos damos brute force de adicionar acoes, mas nos metodos
-        #temos actions, possible actions que nao vao contra as regras dos valores,
-        # entao de forma algoritmica, a unica coisa que temos de verificar e se 
-
+        estão preenchidas de acordo com as regras do problema e se formam
+        um ÚNICO loop."""
+        
         board = state.get_board()
         drawn_edges = board.all_drawn_edges
 
@@ -519,27 +516,20 @@ class Slitherlink(Problem):
         for r in range(board.rows):
             for c in range(board.cols):
                 hint = board.board[r][c]
-                
-                # Mudado de '.' para -1
                 if hint != -1 and hint is not None: 
-                    
                     if board.get_active_edges(r, c) != int(hint):
                         return False
 
         # 3. VERIFICAÇÃO DO CIRCUITO FECHADO (Grau dos vértices = 2)
         vertex_degrees = {}
-        
         for edge in drawn_edges:
             t, r, c = edge
             # Determinar os dois vértices (pontos) que esta aresta liga
             if t == 'h':
-                # Linha horizontal liga o ponto (r, c) ao ponto (r, c+1)
                 v1, v2 = (r, c), (r, c + 1)
             else: # t == 'v'
-                # Linha vertical liga o ponto (r, c) ao ponto (r+1, c)
                 v1, v2 = (r, c), (r + 1, c)
 
-            # Contar quantas linhas tocam em cada vértice
             vertex_degrees[v1] = vertex_degrees.get(v1, 0) + 1
             vertex_degrees[v2] = vertex_degrees.get(v2, 0) + 1
 
@@ -548,9 +538,39 @@ class Slitherlink(Problem):
             if degree != 2:
                 return False
 
+        # ---------------------------------------------------------
+        # 4. VERIFICAÇÃO DE LOOP ÚNICO (O motor BFS)
+        # ---------------------------------------------------------
+        # Usamos uma pesquisa em largura (BFS) para contar quantas arestas
+        # conseguimos alcançar a partir de uma aresta inicial.
+        visited = set()
+        start_edge = next(iter(drawn_edges))
+        queue = [start_edge]
+        visited.add(start_edge)
+        
+        while queue:
+            curr_edge = queue.pop(0)
+            t, r, c = curr_edge
+            v1 = (r, c)
+            v2 = (r, c + 1) if t == 'h' else (r + 1, c)
+            
+            for next_edge in drawn_edges:
+                if next_edge not in visited:
+                    nt, nr, nc = next_edge
+                    nv1 = (nr, nc)
+                    nv2 = (nr, nc + 1) if nt == 'h' else (nr + 1, nc)
+                    
+                    # Se a próxima aresta partilha um vértice com a atual, estão conectadas
+                    if v1 in (nv1, nv2) or v2 in (nv1, nv2):
+                        visited.add(next_edge)
+                        queue.append(next_edge)
+                        
+        # Se o BFS não conseguiu visitar todas as arestas que estão no tabuleiro,
+        # significa que o algoritmo desenhou formas disjuntas no meio do nada.
+        if len(visited) != len(drawn_edges):
+            return False
+
         # Se passou nos testes todos, consideramos que ganhou!
-        #temos de, como escrito em print_complete, para o print() dar a solucao 
-        #toda, adicionar os mandatory_edges a drawn_edges
         board.drawn_edges = board.all_drawn_edges
         return True
 
@@ -558,7 +578,7 @@ class Slitherlink(Problem):
     def h(self, node: Node):
         board = node.state.get_board()
         
-        # contar arestas ativas por celula numa unica passagem
+        # 1. Contar arestas ativas por célula (A tua lógica original)
         cell_active_edges = {}
         for edge in board.all_drawn_edges:
             t, r, c = edge
@@ -575,6 +595,7 @@ class Slitherlink(Problem):
 
         score = 0.0
         
+        # 2. Avaliar as restrições das células (A tua lógica original otimizada)
         for r in range(board.rows):
             for c in range(board.cols):
                 hint = board.board[r][c]
@@ -585,21 +606,51 @@ class Slitherlink(Problem):
                 missing = hint - active
                 
                 if missing == 0:
-                    # celula completa: recompensar, reduz o score (greedy prefere menor)
-                    score -= 5.0
+                    score -= 5.0  # Célula completa: recompensa
                 elif missing > 0:
-                    # celula incompleta: penalizar proporcionalmente ao hint
-                    if hint == 3:
-                        score += missing * 3.0
-                    elif hint == 2:
-                        score += missing * 1.5
-                    else:
-                        score += missing * 1.0
+                    score += missing * 3.0  # Faltam linhas: penaliza
                 else:
-                    # missing < 0: celula tem mais arestas do que devia, estado invalido
-                    score += 100.0
+                    score += 100.0  # Linhas a mais: estado impossível
+
+        # -------------------------------------------------------------------
+        # 3. O NOVO MOTOR DE CONECTIVIDADE (Para forçar a fechar o loop)
+        # -------------------------------------------------------------------
+        drawn_edges = board.all_drawn_edges
+        if len(drawn_edges) > 0:
+            # Descobrir onde estão as pontas soltas (vértices com grau 1)
+            degree = {}
+            for edge in drawn_edges:
+                t, r, c = edge
+                v1 = (r, c)
+                v2 = (r, c + 1) if t == 'h' else (r + 1, c)
+                
+                degree[v1] = degree.get(v1, 0) + 1
+                degree[v2] = degree.get(v2, 0) + 1
+                
+            loose_ends = [v for v, deg in degree.items() if deg == 1]
+            
+            # Penalização de Fragmentação: Queremos apenas 1 caminho (2 pontas soltas).
+            # Se houver 4, 6, 8 pontas, o Greedy está a fazer asneira a espalhar linhas.
+            if len(loose_ends) > 2:
+                score += len(loose_ends) * 15.0 
+                
+            # O "Gap Closer": Se temos exatamente 2 pontas, qual é a distância entre elas?
+            elif len(loose_ends) == 2:
+                v1, v2 = loose_ends
+                # Manhattan distance formula: |x1 - x2| + |y1 - y2|
+                manhattan_dist = abs(v1[0] - v2[0]) + abs(v1[1] - v2[1])
+                
+                # Multiplicamos por 2.0 para que dar um passo na direção certa
+                # baixe o score mais rápido do que dar um passo para longe.
+                score += manhattan_dist * 2.0 
+                
+            # Se houver 0 pontas soltas, mas as dicas ainda não estão completas (missing > 0 em cima)
+            # significa que fechou um mini-loop cedo demais. Penaliza pesadamente.
+            elif len(loose_ends) == 0 and score > 0:
+                score += 500.0
 
         return score
+
 
 
 if __name__ == "__main__":

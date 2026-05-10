@@ -1,10 +1,10 @@
     SAT   CP
-1    0.003     0.009
-2    0.070      5.87
-3      x       
-4      x
-5      x
-6      x
-7      x
-8      x
-9      x       20-30min (nao cronometrado)
+1    0.003s     0.009s
+2    0.070s      5.87s
+3      34.24       
+4      47s
+5      0.95s
+6      17s
+7      22s
+8      0.2113
+9      0.18s       20-30min (nao cronometrado)

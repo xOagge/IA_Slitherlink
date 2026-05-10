@@ -25,12 +25,14 @@ class InitialPropagator:
     #return a todas as mandatory edges
     def mandatory_edges(self) -> tuple:
         return self.case_3_0_edges()[0] | self.mandatory_corner_3_edges() \
-             | self.mandatory_3_3_edges() | self.case_3_3_diagonal_edges()[0]
+             | self.mandatory_3_3_edges() | self.case_3_3_diagonal_edges()[0] \
+             #| self.case_3_1_3_edges()[0]
 
     #return a todas as unallowed edges
     def unallowed_edges(self) -> tuple:
         return self.case_3_0_edges()[1] | self.unallowed_0_edges() \
-             | self.unallowed_corner_1_edges() | self.case_3_3_diagonal_edges()[1]
+             | self.unallowed_corner_1_edges() | self.case_3_3_diagonal_edges()[1] \
+             #| self.case_3_1_3_edges()[1]
 
     # casos (teem obrigatorios e proibidos), como os relacionamentos, os "casos" sao
     # mais complicados ---------------------------------------------------------
@@ -207,6 +209,52 @@ class InitialPropagator:
                     adjacent_edges = self.board.get_cell_edges(r, c)
                     forbidden_edges.update(adjacent_edges)
         return forbidden_edges
+
+    #gemini fez o codigo, percebi o caso pelo teste 3
+    # def case_3_1_3_edges(self) -> tuple:
+    #     """quando temos um padrao 3-1-3 (em linha ou coluna), as arestas paralelas 
+    #     exteriores dos '3's sao obrigatorias (incluindo as extremidades distantes!), 
+    #     e as arestas paralelas do '1' sao proibidas."""
+    #     board:list = self.board.board
+    #     rows = len(board)
+    #     cols = len(board[0])
+
+    #     forced_edges = set()
+    #     forbidden_edges = set()
+        
+    #     for r in range(rows):
+    #         for c in range(cols):
+    #             # procurar o '1' como ponto central
+    #             if board[r][c] == 1:
+                    
+    #                 # Verificar 3-1-3 Horizontal (3 a esquerda e 3 a direita)
+    #                 if c - 1 >= 0 and c + 1 < cols:
+    #                     if board[r][c-1] == 3 and board[r][c+1] == 3:
+    #                         forced_edges.update([
+    #                             ('h', r, c-1), ('h', r+1, c-1),  # Topo e base do 3 esquerdo
+    #                             ('v', r, c-1),                   # *** Aresta vertical ESQUERDA do 3 esquerdo ***
+    #                             ('h', r, c+1), ('h', r+1, c+1),  # Topo e base do 3 direito
+    #                             ('v', r, c+2)                    # *** Aresta vertical DIREITA do 3 direito ***
+    #                         ])
+    #                         forbidden_edges.update([
+    #                             ('h', r, c), ('h', r+1, c)       # Topo e base do 1 central
+    #                         ])
+
+    #                 # Verificar 3-1-3 Vertical (3 acima e 3 abaixo)
+    #                 if r - 1 >= 0 and r + 1 < rows:
+    #                     if board[r-1][c] == 3 and board[r+1][c] == 3:
+    #                         forced_edges.update([
+    #                             ('v', r-1, c), ('v', r-1, c+1),  # Esq. e dir. do 3 de cima
+    #                             ('h', r-1, c),                   # *** Aresta horizontal TOPO do 3 de cima ***
+    #                             ('v', r+1, c), ('v', r+1, c+1),  # Esq. e dir. do 3 de baixo
+    #                             ('h', r+2, c)                    # *** Aresta horizontal BASE do 3 de baixo ***
+    #                         ])
+    #                         forbidden_edges.update([
+    #                             ('v', r, c), ('v', r, c+1)       # Esq. e dir. do 1 central
+    #                         ])
+
+    #     return forced_edges, forbidden_edges
+
 
 class Propagator:
     """
