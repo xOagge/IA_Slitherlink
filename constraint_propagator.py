@@ -4,7 +4,7 @@ from slitherlink import Board, SlitherlinkState
 # "give me a simple class , without meaningfull definitions, 
 # just with name and class methods names that make sense theory wise"
 # docstrings vieram includas neste template
-class ConstraintPropagator:
+class InitialPropagator:
     """
     Executa o "Forward Checking" e a Consistência de Arcos (AC-3) durante a fase de procura.
     Esta classe 'lê' o estado do tabuleiro e força todas as deduções lógicas antes de 
@@ -208,3 +208,666 @@ class ConstraintPropagator:
                     forbidden_edges.update(adjacent_edges)
         return forbidden_edges
 
+class Propagator:
+    """
+    Applies deterministic logical rules to a board after each edge placement.
+    Call propagate() after every action in result() to resolve all forced moves
+    before the search continues.
+
+    Rules applied (in order):
+        1. Cell completion  - if active == hint, forbid remaining edges of that cell
+        2. Cell forcing     - if available == missing, all available edges are mandatory
+        3. Vertex degree    - if degree 2, forbid rest; if degree 1 with one option, force it; if degree 0 with one option, forbid it
+        4. Loop prevention  - forbid any edge that would close a loop prematurely
+
+    Returns False if a contradiction is found, True otherwise.
+    """
+
+    def __init__(self, board):
+        self.board = board
+
+    def propagate(self) -> bool:
+        """
+        Runs all rules in a loop until stable.
+        Returns False if a contradiction is detected, True otherwise.
+        """
+        changed = True
+        while changed:
+            changed = False
+            changed |= self._rule_cell_completion()
+            changed |= self._rule_cell_forcing()
+            changed |= self._rule_vertex_degree()
+            changed |= self._rule_no_premature_loop()
+
+            if self._has_contradiction():
+                return False
+
+            if self._rule_loose_end_reachability():
+                return False
+
+        return True
+
+    # --- rules -------------------------------------------------------------------
+
+    def _rule_cell_completion(self) -> bool:
+        """
+        If active == hint, forbid remaining edges of that cell.
+        If active + available == hint, all available edges are mandatory.
+        """
+        changed = False
+        board = self.board
+
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                if hint == -1:
+                    continue
+
+                active = board.get_active_edges(r, c)
+                edges = board.get_cell_edges(r, c)
+                available = [e for e in edges
+                             if e in board.allowed_edges
+                             and e not in board.all_drawn_edges]
+
+                if active == hint:
+                    for e in available:
+                        board.allowed_edges.discard(e)
+                        board.unallowed_edges.add(e)
+                        changed = True
+
+                elif active + len(available) == hint:
+                    for e in available:
+                        if e not in board.mandatory_drawn_edges:
+                            board.mandatory_drawn_edges.add(e)
+                            changed = True
+
+        return changed
+
+    def _rule_cell_forcing(self) -> bool:
+        """
+        If the number of available edges equals the number of missing edges,
+        all available edges must be drawn.
+        """
+        changed = False
+        board = self.board
+
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                if hint == -1:
+                    continue
+
+                active = board.get_active_edges(r, c)
+                missing = hint - active
+                available = [e for e in board.get_cell_edges(r, c)
+                             if e in board.allowed_edges
+                             and e not in board.all_drawn_edges]
+
+                if missing > 0 and len(available) == missing:
+                    for e in available:
+                        if e not in board.mandatory_drawn_edges:
+                            board.mandatory_drawn_edges.add(e)
+                            changed = True
+
+        return changed
+
+    def _rule_vertex_degree(self) -> bool:
+        """
+        - degree 2: forbid all other edges touching that vertex
+        - degree 1: if only one continuation available, force it
+        - degree 0: if only one edge available, forbid it (can never reach degree 2)
+        """
+        changed = False
+        board = self.board
+
+        # build degree map
+        degree = {}
+        for edge in board.all_drawn_edges:
+            for v in self._edge_vertices(edge):
+                degree[v] = degree.get(v, 0) + 1
+
+        # collect all vertices on the board
+        all_vertices = set()
+        for edge in board.all_edges:
+            for v in self._edge_vertices(edge):
+                all_vertices.add(v)
+
+        for v in all_vertices:
+            deg = degree.get(v, 0)
+            touching = self._edges_touching_vertex(v)
+            available = [e for e in touching
+                         if e in board.allowed_edges
+                         and e not in board.all_drawn_edges]
+
+            if deg == 2:
+                for e in available:
+                    board.allowed_edges.discard(e)
+                    board.unallowed_edges.add(e)
+                    changed = True
+
+            elif deg == 1:
+                if len(available) == 1:
+                    e = available[0]
+                    if e not in board.mandatory_drawn_edges:
+                        board.mandatory_drawn_edges.add(e)
+                        changed = True
+
+            elif deg == 0:
+                if len(available) == 1:
+                    board.allowed_edges.discard(available[0])
+                    board.unallowed_edges.add(available[0])
+                    changed = True
+
+        return changed
+
+    def _rule_no_premature_loop(self) -> bool:
+        """
+        Forbid any edge that would directly connect the two loose ends
+        and close the loop unless all hints are already satisfied.
+        """
+        changed = False
+        board = self.board
+        drawn = board.all_drawn_edges
+
+        if len(drawn) == 0:
+            return False
+
+        degree = {}
+        for edge in drawn:
+            for v in self._edge_vertices(edge):
+                degree[v] = degree.get(v, 0) + 1
+
+        loose_ends = [v for v, deg in degree.items() if deg == 1]
+
+        if len(loose_ends) != 2:
+            return False
+
+        v1, v2 = loose_ends
+
+        for e in list(board.allowed_edges - drawn):
+            ev1, ev2 = self._edge_vertices(e)
+            if {ev1, ev2} == {v1, v2}:
+                if not self._all_hints_satisfied():
+                    board.allowed_edges.discard(e)
+                    board.unallowed_edges.add(e)
+                    changed = True
+
+        return changed
+
+    # --- contradiction detection -------------------------------------------------
+
+    def _has_contradiction(self) -> bool:
+        """
+        Returns True if the board is in an impossible state:
+            - a cell has more active edges than its hint
+            - a cell cannot possibly reach its hint
+            - a vertex has degree > 2
+            - a closed sub-loop exists before all hints are satisfied
+        """
+        board = self.board
+        drawn = board.all_drawn_edges
+
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                if hint == -1:
+                    continue
+
+                active = board.get_active_edges(r, c)
+                available = [e for e in board.get_cell_edges(r, c)
+                             if e in board.allowed_edges
+                             and e not in drawn]
+
+                if active > hint:
+                    return True
+
+                if active + len(available) < hint:
+                    return True
+
+        # check vertex degrees and detect closed sub-loops
+        degree = {}
+        for edge in drawn:
+            for v in self._edge_vertices(edge):
+                degree[v] = degree.get(v, 0) + 1
+                if degree[v] > 2:
+                    return True
+
+        loose_ends = [v for v, deg in degree.items() if deg == 1]
+
+        if len(loose_ends) == 0 and len(drawn) > 0 and not self._all_hints_satisfied():
+            return True
+
+        return False
+
+    def _rule_loose_end_reachability(self) -> bool:
+        """
+        Returns True (contradiction) if any loose end has no available
+        edges to continue from — it is permanently stranded.
+        """
+        board = self.board
+        drawn = board.all_drawn_edges
+
+        if len(drawn) == 0:
+            return False
+
+        degree = {}
+        for edge in drawn:
+            for v in self._edge_vertices(edge):
+                degree[v] = degree.get(v, 0) + 1
+
+        loose_ends = [v for v, deg in degree.items() if deg == 1]
+
+        for v in loose_ends:
+            touching = self._edges_touching_vertex(v)
+            available = [e for e in touching
+                         if e in board.allowed_edges
+                         and e not in drawn]
+            if len(available) == 0:
+                return True
+
+        return False
+
+    # --- helpers -----------------------------------------------------------------
+
+    def _edge_vertices(self, edge) -> tuple:
+        """Returns the two vertices that an edge connects."""
+        t, r, c = edge
+        if t == 'h':
+            return (r, c), (r, c + 1)
+        else:
+            return (r, c), (r + 1, c)
+
+    def _edges_touching_vertex(self, vertex) -> list:
+        """Returns all valid edges that touch a given vertex."""
+        vr, vc = vertex
+        candidates = [
+            ('h', vr, vc),
+            ('h', vr, vc - 1),
+            ('v', vr, vc),
+            ('v', vr - 1, vc),
+        ]
+        return [e for e in candidates if e in self.board.all_edges]
+
+    def _all_hints_satisfied(self) -> bool:
+        """Returns True if every numbered cell has exactly the right number of active edges."""
+        board = self.board
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                if hint == -1:
+                    continue
+                if board.get_active_edges(r, c) != hint:
+                    return False
+        return True
+    """
+    Applies deterministic logical rules to a board after each edge placement.
+    Call propagate() after every action in result() to resolve all forced moves
+    before the search continues.
+    
+    Rules applied (in order):
+        1. Cell completion  - if active == hint, forbid remaining edges of that cell
+        2. Cell forcing     - if available == missing, all available edges are mandatory
+        3. Vertex degree    - if a vertex has degree 2, forbid all other edges touching it
+        4. Loop prevention  - forbid any edge that would close a loop prematurely
+    
+    Returns False if a contradiction is found (state is invalid), True otherwise.
+    """
+
+    def __init__(self, board):
+        self.board = board
+
+    def propagate(self) -> bool:
+        """
+        Runs all rules in a loop until no more changes occur.
+        Returns False if a contradiction is detected, True if stable.
+        """
+        changed = True
+        while changed:
+            changed = False
+            changed |= self._rule_cell_completion()
+            changed |= self._rule_cell_forcing()
+            changed |= self._rule_vertex_degree()
+            changed |= self._rule_no_premature_loop()
+            
+            # check for contradictions after each round
+            if self._has_contradiction():
+                return False
+        return True
+
+    # --- rules -------------------------------------------------------------------
+
+    def _rule_cell_completion(self) -> bool:
+        """
+        If a cell has exactly as many active edges as its hint,
+        all remaining edges of that cell are forbidden.
+        """
+        changed = False
+        board = self.board
+
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                if hint == -1:
+                    continue
+
+                active = board.get_active_edges(r, c)
+                if active == hint:
+                    for e in board.get_cell_edges(r, c):
+                        if e in board.allowed_edges and e not in board.all_drawn_edges:
+                            board.allowed_edges.discard(e)
+                            board.unallowed_edges.add(e)
+                            changed = True
+
+        return changed
+
+    def _rule_cell_forcing(self) -> bool:
+        """
+        If the number of available edges equals the number of missing edges for a cell,
+        all available edges must be drawn.
+        """
+        changed = False
+        board = self.board
+
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                if hint == -1:
+                    continue
+
+                active = board.get_active_edges(r, c)
+                missing = hint - active
+                available = [
+                    e for e in board.get_cell_edges(r, c)
+                    if e in board.allowed_edges and e not in board.all_drawn_edges
+                ]
+
+                if missing > 0 and len(available) == missing:
+                    for e in available:
+                        if e not in board.mandatory_drawn_edges:
+                            board.mandatory_drawn_edges.add(e)
+                            changed = True
+
+        return changed
+
+    def _rule_vertex_degree(self) -> bool:
+        """
+        Each vertex can have at most 2 edges.
+        If a vertex already has degree 2, forbid all other edges touching it.
+        If a vertex has degree 1 and only 1 available edge remains, that edge is mandatory.
+        """
+        changed = False
+        board = self.board
+
+        # build degree map for all vertices
+        degree = {}
+        for edge in board.all_drawn_edges:
+            for v in self._edge_vertices(edge):
+                degree[v] = degree.get(v, 0) + 1
+
+        # for each vertex, apply rules
+        for v, deg in degree.items():
+            touching = self._edges_touching_vertex(v)
+
+            if deg == 2:
+                # vertex is full, forbid everything else
+                for e in touching:
+                    if e in board.allowed_edges and e not in board.all_drawn_edges:
+                        board.allowed_edges.discard(e)
+                        board.unallowed_edges.add(e)
+                        changed = True
+
+            elif deg == 1:
+                # loose end: if only one continuation available, it is forced
+                available = [
+                    e for e in touching
+                    if e in board.allowed_edges and e not in board.all_drawn_edges
+                ]
+                if len(available) == 1:
+                    e = available[0]
+                    if e not in board.mandatory_drawn_edges:
+                        board.mandatory_drawn_edges.add(e)
+                        changed = True
+
+        return changed
+
+    def _rule_no_premature_loop(self) -> bool:
+        """
+        Forbid any edge that would close the current path into a loop
+        unless every cell hint is already satisfied (i.e. it would be the solution).
+        """
+        changed = False
+        board = self.board
+        drawn = board.all_drawn_edges
+
+        if len(drawn) == 0:
+            return False
+
+        # find the two loose ends (degree-1 vertices)
+        degree = {}
+        for edge in drawn:
+            for v in self._edge_vertices(edge):
+                degree[v] = degree.get(v, 0) + 1
+
+        loose_ends = [v for v, deg in degree.items() if deg == 1]
+
+        # a loop closes when the two loose ends are connected
+        # this only makes sense if there are exactly 2 loose ends
+        if len(loose_ends) != 2:
+            return False
+
+        v1, v2 = loose_ends
+
+        # check if any single edge directly connects the two loose ends
+        for e in list(board.allowed_edges - drawn):
+            verts = self._edge_vertices(e)
+            if set(verts) == {v1, v2}:
+                # this edge would close the loop - only allow if all hints satisfied
+                if not self._all_hints_satisfied():
+                    board.allowed_edges.discard(e)
+                    board.unallowed_edges.add(e)
+                    changed = True
+
+        return changed
+
+    # --- contradiction detection -------------------------------------------------
+
+    def _has_contradiction(self) -> bool:
+        board = self.board
+        drawn = board.all_drawn_edges
+
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                if hint == -1:
+                    continue
+
+                active = board.get_active_edges(r, c)
+                available = [
+                    e for e in board.get_cell_edges(r, c)
+                    if e in board.allowed_edges and e not in drawn
+                ]
+
+                if active > hint:
+                    return True
+
+                if active + len(available) < hint:
+                    return True
+
+        # check vertex degrees and find loose ends in one pass
+        degree = {}
+        for edge in drawn:
+            for v in self._edge_vertices(edge):
+                degree[v] = degree.get(v, 0) + 1
+                if degree[v] > 2:
+                    return True
+
+        loose_ends = [v for v, deg in degree.items() if deg == 1]
+
+        # closed sub-loop detected before solution is complete
+        if len(loose_ends) == 0 and len(drawn) > 0 and not self._all_hints_satisfied():
+            return True
+
+        return False
+    
+    # --- helpers -----------------------------------------------------------------
+
+    def _edge_vertices(self, edge) -> tuple:
+        """Returns the two vertices (points) that an edge connects."""
+        t, r, c = edge
+        if t == 'h':
+            return (r, c), (r, c + 1)
+        else:  # 'v'
+            return (r, c), (r + 1, c)
+
+    def _edges_touching_vertex(self, vertex) -> list:
+        """Returns all possible edges that touch a given vertex."""
+        vr, vc = vertex
+        candidates = [
+            ('h', vr, vc),
+            ('h', vr, vc - 1),
+            ('v', vr, vc),
+            ('v', vr - 1, vc),
+        ]
+        return [e for e in candidates if e in self.board.all_edges]
+
+    def _all_hints_satisfied(self) -> bool:
+        """Returns True if every numbered cell has exactly the right number of active edges."""
+        board = self.board
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                if hint == -1:
+                    continue
+                if board.get_active_edges(r, c) != hint:
+                    return False
+        return True
+    
+    def _rule_no_premature_loop(self) -> bool:
+        changed = False
+        board = self.board
+        drawn = board.all_drawn_edges
+
+        if len(drawn) == 0:
+            return False
+
+        # build degree map
+        degree = {}
+        for edge in drawn:
+            for v in self._edge_vertices(edge):
+                degree[v] = degree.get(v, 0) + 1
+
+        loose_ends = [v for v, deg in degree.items() if deg == 1]
+
+        # if there are NO loose ends but hints arent all satisfied,
+        # we already have an illegal closed loop — contradiction
+        if len(loose_ends) == 0 and not self._all_hints_satisfied():
+            return False  # _has_contradiction will catch this via hint check
+
+        if len(loose_ends) != 2:
+            return False
+
+        v1, v2 = loose_ends
+
+        # forbid any edge that directly connects the two loose ends
+        # unless all hints are satisfied
+        for e in list(board.allowed_edges - drawn):
+            verts = set(self._edge_vertices(e))
+            if verts == {v1, v2}:
+                if not self._all_hints_satisfied():
+                    board.allowed_edges.discard(e)
+                    board.unallowed_edges.add(e)
+                    changed = True
+
+        return changed
+    
+
+    
+    def _rule_loose_end_reachability(self) -> bool:
+        board = self.board
+        drawn = board.all_drawn_edges
+
+        if len(drawn) == 0:
+            return False
+
+        degree = {}
+        for edge in drawn:
+            for v in self._edge_vertices(edge):
+                degree[v] = degree.get(v, 0) + 1
+
+        loose_ends = [v for v, deg in degree.items() if deg == 1]
+
+        for v in loose_ends:
+            touching = self._edges_touching_vertex(v)
+            available = [e for e in touching
+                        if e in board.allowed_edges
+                        and e not in drawn]
+            if len(available) == 0:
+                return True  # signal contradiction to propagate()
+        
+        return False
+    
+    def _rule_cell_completion(self) -> bool:
+        changed = False
+        board = self.board
+
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                if hint == -1:
+                    continue
+
+                active = board.get_active_edges(r, c)
+                edges = board.get_cell_edges(r, c)
+                available = [e for e in edges 
+                            if e in board.allowed_edges 
+                            and e not in board.all_drawn_edges]
+
+                if active == hint:
+                    for e in available:
+                        board.allowed_edges.discard(e)
+                        board.unallowed_edges.add(e)
+                        changed = True
+
+                # if remaining available + active still cant reach hint, contradiction
+                # (already in _has_contradiction but catch early here too)
+                elif active + len(available) == hint:
+                    for e in available:
+                        if e not in board.mandatory_drawn_edges:
+                            board.mandatory_drawn_edges.add(e)
+                            changed = True
+
+        return changed
+
+    def _rule_no_premature_loop(self) -> bool:
+        changed = False
+        board = self.board
+        drawn = board.all_drawn_edges
+
+        if len(drawn) == 0:
+            return False
+
+        degree = {}
+        for edge in drawn:
+            for v in self._edge_vertices(edge):
+                degree[v] = degree.get(v, 0) + 1
+
+        loose_ends = [v for v, deg in degree.items() if deg == 1]
+
+        if len(loose_ends) == 0 and not self._all_hints_satisfied():
+            return False  # already a contradiction
+
+        if len(loose_ends) != 2:
+            return False
+
+        v1, v2 = loose_ends
+
+        for e in list(board.allowed_edges - drawn):
+            ev1, ev2 = self._edge_vertices(e)
+            # this edge connects the two loose ends directly -> closes the loop
+            if set([ev1, ev2]) == {v1, v2}:
+                if not self._all_hints_satisfied():
+                    board.allowed_edges.discard(e)
+                    board.unallowed_edges.add(e)
+                    changed = True
+
+        return changed

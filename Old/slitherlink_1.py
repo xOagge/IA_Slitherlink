@@ -24,6 +24,7 @@ from search import (
     recursive_best_first_search,
 )
 
+
 class SlitherlinkState:
     state_id = 0
 
@@ -46,12 +47,12 @@ class SlitherlinkState:
         # significa que o tabuleiro está visualmente idêntico.
         if not isinstance(other, SlitherlinkState):
             return False
-        return self.board.all_drawn_edges == other.board.all_drawn_edges
+        return self.board.drawn_edges == other.board.drawn_edges
 
     def __hash__(self):
         # Transforma o set de edges numa versão 'congelada' (frozenset)
         # para que o algoritmo consiga usar isto como chave de memória rápida.
-        return hash(frozenset(self.board.all_drawn_edges))
+        return hash(frozenset(self.board.drawn_edges))
 
 class Board:
     """Representação interna de um tabuleiro de Slitherlink."""
@@ -177,7 +178,6 @@ class Board:
             if c < self.cols: cells_list.append((r, c))
         return cells_list
     
-    #Claude
     def get_extremes(self):
         """da return as extremidades do que ja temos desenhado"""
         extreme_edges = []
@@ -216,7 +216,6 @@ class Board:
                 extreme_edges.append(edge)
         return extreme_edges
 
-    #Claude
     def get_actions_from_extreme(self, extreme_edge, allowed_edges):
         """para um extremo, devolve as acoes possiveis que continuam a partir dele"""
         t, r, c = extreme_edge
@@ -403,7 +402,8 @@ class Board:
             output.append(last_h_line)
             output.append('\n-----------------------------------\n')
 
-            return "\n".join(output)   
+            return "\n".join(output)    
+    
     
 class Slitherlink(Problem):
     def __init__(self, board: Board, gui=None):
@@ -412,19 +412,12 @@ class Slitherlink(Problem):
         self.gui = gui
 
         # ----------  edges obrigatorias e proibidas ------------
-        from constraint_propagator import InitialPropagator
-        from edge_trigger_resolver import EdgeTriggerResolver
+        from constraint_propagator import ConstraintPropagator
         temp_state = SlitherlinkState(board)
-        propagator = InitialPropagator(temp_state)
-
+        propagator = ConstraintPropagator(temp_state)
         # obter constrainsts
-        # forbidden = propagator.unallowed_edges() - Passou a comentário de modo a dar lugar ao que está abaixo
-        # mandatory = propagator.mandatory_edges() 
-
-        #Feita alteração de modo a incluir o EdgeTriggerResolver
-        resolver = EdgeTriggerResolver(temp_state)
-        mandatory, forbidden = resolver.resolve_complete()
-
+        forbidden = propagator.unallowed_edges()
+        mandatory = propagator.mandatory_edges()
         #remover proibicoes removendo as edges proibidas de allowed_edges
         #parece complicado, mas assim temos os forbidden, com verificacao que todas as 
         #edge coordinates percencem a borda. mais por questao de consistencia
@@ -441,62 +434,56 @@ class Slitherlink(Problem):
         #em search.py e necessario esta variavel self.initial
         initial_state = SlitherlinkState(board)
         self.initial = initial_state
-    
+        
 
     def actions(self, state: SlitherlinkState):
-        board = state.board
-        if getattr(board, 'contradiction', False):
-            return ()
-        
-        drawn = board.all_drawn_edges
+        """Retorna uma lista de ações que podem ser executadas a
+        partir do estado passado como argumento."""
 
         print("\n--- A explorar o seguinte estado: ---")
         print(state.board.print_complete())
+    
 
-        # dead end check
-        if len(drawn) > 0:
-            extremes = board.get_extremes()
-            for extreme in extremes:
-                continuations = board.get_actions_from_extreme(extreme, board.allowed_edges)
-                feasible = [a for a in continuations if board.is_action_possible(a)]
-                if len(feasible) == 0:
-                    return ()
+        # ORDEM, FREE EDGES -> CONTINUACOES EM LINHA -> NAO EXCEDE VALOR DE CELULAS
+        # esta ordem parece ser optimizada para dar narrow dawn das possibilidades
 
-        # logica original que funciona
-        actions = board.allowed_edges - drawn
+        # todas as acoes fisicamente disponiveis
+        board = state.board
+        actions = board.allowed_edges - board.all_drawn_edges
 
+        #de todas as opcoes de acoes, vou encontrar as que sao adjacentes e ao criam branches
         adjacent_actions = []
-        if len(drawn) != 0:
+        if len(board.all_drawn_edges) != 0:
             for action in actions:
                 if board.is_action_adjacent_to_edge(action):
                     adjacent_actions.append(action)
-        else:
-            adjacent_actions = list(actions)
+        else: adjacent_actions = actions
 
-        feasible_actions = [a for a in adjacent_actions if board.is_action_possible(a)]
-        return tuple(feasible_actions)
+        #avaliar acoes que nao quebrem as regras de limite de linhas a volta de uma celula
+        feasable_actions = []
+        for action in adjacent_actions:
+            if board.is_action_possible(action): feasable_actions.append(action)
+        
+        return tuple(feasable_actions)
 
 
-    def result(self, state, action):
+    def result(self, state: SlitherlinkState, action):
+        """Retorna o estado resultante de executar a 'action' sobre
+        'state' passado como argumento. A ação a executar deve ser uma
+        das presentes na lista obtida pela execução de
+        self.actions(state)."""
 
-        from constraint_propagator import Propagator
-        board = state.get_board()
-        newBoard = copy.deepcopy(board)
+        board = state.get_board() # board atual
+        newBoard = copy.deepcopy(board) #definir uma nova board
 
+        #se action e um tuplo, e elementos sao uma string, entao e single action
         if isinstance(action, tuple) and isinstance(action[0], str):
             newBoard.add_action(action)
+        #caso contrario, assumimos e um tuplo de variasa acoes, como nos exemplos
         else:
             for act in action:
-                newBoard.add_action(act)
-
-        # propagate after every placement
-        propagator = Propagator(newBoard)
-        valid = propagator.propagate()
-        if not valid:
-            # mark board as contradicted so actions() returns () immediately
-            newBoard.contradiction = True
-
-        return SlitherlinkState(newBoard)
+                newBoard.add_action(act) # adicionar acao a nova borda
+        return SlitherlinkState(newBoard) #return do novo estado
 
     #FULL GEMINI
     def goal_test(self, state: SlitherlinkState):
@@ -556,50 +543,52 @@ class Slitherlink(Problem):
 
     # GEMINI PRO
     def h(self, node: Node):
+        """Função heuristica utilizada para a procura A*."""
         board = node.state.get_board()
         
-        # contar arestas ativas por celula numa unica passagem
+        # 1. OPTIMIZAÇÃO EXTREMA: Contar todas as arestas numa única passagem
+        # Em vez de chamar get_active_edges() que faz loops repetidos,
+        # mapeamos quais células cada aresta toca num único loop rápido.
         cell_active_edges = {}
         for edge in board.all_drawn_edges:
             t, r, c = edge
             if t == 'h':
+                # Linha horizontal afeta a célula abaixo (r, c) e acima (r-1, c)
                 if r < board.rows: 
                     cell_active_edges[(r, c)] = cell_active_edges.get((r, c), 0) + 1
                 if r - 1 >= 0: 
-                    cell_active_edges[(r-1, c)] = cell_active_edges.get((r-1, c), 0) + 1
+                    cell_active_edges[(r - 1, c)] = cell_active_edges.get((r - 1, c), 0) + 1
             elif t == 'v':
+                # Linha vertical afeta a célula à direita (r, c) e à esquerda (r, c-1)
                 if c < board.cols: 
                     cell_active_edges[(r, c)] = cell_active_edges.get((r, c), 0) + 1
                 if c - 1 >= 0: 
-                    cell_active_edges[(r, c-1)] = cell_active_edges.get((r, c-1), 0) + 1
+                    cell_active_edges[(r, c - 1)] = cell_active_edges.get((r, c - 1), 0) + 1
 
+        # 2. LÓGICA DE PESOS (Weighted Logic)
         score = 0.0
         
         for r in range(board.rows):
             for c in range(board.cols):
                 hint = board.board[r][c]
-                if hint == -1:
-                    continue
                 
-                active = cell_active_edges.get((r, c), 0)
-                missing = hint - active
-                
-                if missing == 0:
-                    # celula completa: recompensar, reduz o score (greedy prefere menor)
-                    score -= 5.0
-                elif missing > 0:
-                    # celula incompleta: penalizar proporcionalmente ao hint
-                    if hint == 3:
-                        score += missing * 3.0
-                    elif hint == 2:
-                        score += missing * 1.5
-                    else:
-                        score += missing * 1.0
-                else:
-                    # missing < 0: celula tem mais arestas do que devia, estado invalido
-                    score += 100.0
+                if hint != -1:
+                    # Pegar o número de linhas ativas deste dicionário rápido
+                    active = cell_active_edges.get((r, c), 0)
+                    missing = hint - active
+                    
+                    if missing > 0:
+                        # PESOS ESTRATÉGICOS: 
+                        # Obriga a IA a resolver os '3's primeiro, depois os '2's.
+                        if hint == 3:
+                            score += missing * 3.0  # Alta prioridade!
+                        elif hint == 2:
+                            score += missing * 1.5  # Prioridade média
+                        else:
+                            score += missing * 1.0  # Prioridade normal (hint == 1)
 
-        return score
+        # Dividimos por 2 para manter a heurística admissível para o A*
+        return score / 2.0
 
 
 if __name__ == "__main__":
@@ -612,35 +601,3 @@ if __name__ == "__main__":
     board = Board.parse_instance()
 
 
-
-
-
-    # def actions(self, state: SlitherlinkState):
-    #     """Retorna uma lista de ações que podem ser executadas a
-    #     partir do estado passado como argumento."""
-
-    #     print("\n--- A explorar o seguinte estado: ---")
-    #     print(state.board.print_complete())
-    
-
-    #     # ORDEM, FREE EDGES -> CONTINUACOES EM LINHA -> NAO EXCEDE VALOR DE CELULAS
-    #     # esta ordem parece ser optimizada para dar narrow dawn das possibilidades
-
-    #     # todas as acoes fisicamente disponiveis
-    #     board = state.board
-    #     actions = board.allowed_edges - board.all_drawn_edges
-
-    #     #de todas as opcoes de acoes, vou encontrar as que sao adjacentes e ao criam branches
-    #     adjacent_actions = []
-    #     if len(board.all_drawn_edges) != 0:
-    #         for action in actions:
-    #             if board.is_action_adjacent_to_edge(action):
-    #                 adjacent_actions.append(action)
-    #     else: adjacent_actions = actions
-
-    #     #avaliar acoes que nao quebrem as regras de limite de linhas a volta de uma celula
-    #     feasable_actions = []
-    #     for action in adjacent_actions:
-    #         if board.is_action_possible(action): feasable_actions.append(action)
-        
-    #     return tuple(feasable_actions)

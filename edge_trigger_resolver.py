@@ -1,5 +1,5 @@
 from slitherlink import Board, SlitherlinkState
-from constraint_propagator import ConstraintPropagator
+from constraint_propagator import InitialPropagator
 
 #Realizado com recurso a Deepseek
 class EdgeTriggerResolver:
@@ -17,7 +17,7 @@ class EdgeTriggerResolver:
         self.state = state
         self.board = state.board
 
-        self.propagator = ConstraintPropagator(state)
+        self.propagator = InitialPropagator(state)
     
     def find_trigger_edge(self, pattern_edges: set) -> tuple:
         """

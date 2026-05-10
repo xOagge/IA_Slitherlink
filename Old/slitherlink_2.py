@@ -46,12 +46,12 @@ class SlitherlinkState:
         # significa que o tabuleiro está visualmente idêntico.
         if not isinstance(other, SlitherlinkState):
             return False
-        return self.board.all_drawn_edges == other.board.all_drawn_edges
+        return self.board.drawn_edges == other.board.drawn_edges
 
     def __hash__(self):
         # Transforma o set de edges numa versão 'congelada' (frozenset)
         # para que o algoritmo consiga usar isto como chave de memória rápida.
-        return hash(frozenset(self.board.all_drawn_edges))
+        return hash(frozenset(self.board.drawn_edges))
 
 class Board:
     """Representação interna de um tabuleiro de Slitherlink."""
@@ -177,7 +177,6 @@ class Board:
             if c < self.cols: cells_list.append((r, c))
         return cells_list
     
-    #Claude
     def get_extremes(self):
         """da return as extremidades do que ja temos desenhado"""
         extreme_edges = []
@@ -216,7 +215,6 @@ class Board:
                 extreme_edges.append(edge)
         return extreme_edges
 
-    #Claude
     def get_actions_from_extreme(self, extreme_edge, allowed_edges):
         """para um extremo, devolve as acoes possiveis que continuam a partir dele"""
         t, r, c = extreme_edge

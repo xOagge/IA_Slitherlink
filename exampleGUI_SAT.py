@@ -1,6 +1,6 @@
 import sys
 import tkinter as tk
-from slitherlink import Board, SlitherlinkState, Slitherlink
+from slitherlink_SAT import Board, SlitherlinkState, Slitherlink
 from slitherlink_gui import SlitherlinkGUI
 from search import * # (or whatever search you are using)
 

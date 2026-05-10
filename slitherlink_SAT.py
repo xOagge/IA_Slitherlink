@@ -478,8 +478,8 @@ class Slitherlink(Problem):
 
 
     def result(self, state, action):
+        from SATOracle import SATSolver
 
-        from constraint_propagator import Propagator
         board = state.get_board()
         newBoard = copy.deepcopy(board)
 
@@ -489,11 +489,10 @@ class Slitherlink(Problem):
             for act in action:
                 newBoard.add_action(act)
 
-        # propagate after every placement
-        propagator = Propagator(newBoard)
-        valid = propagator.propagate()
+        # try SAT first, fall back to Propagator if needed
+        sat = SATSolver(newBoard)
+        valid = sat.propagate()
         if not valid:
-            # mark board as contradicted so actions() returns () immediately
             newBoard.contradiction = True
 
         return SlitherlinkState(newBoard)
