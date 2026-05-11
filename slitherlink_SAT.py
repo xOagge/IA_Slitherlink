@@ -442,8 +442,7 @@ class Slitherlink(Problem):
         initial_state = SlitherlinkState(board)
         self.initial = initial_state
     
-
-    
+    #ALTERAR TUDO DAQUI PARA BAIXO PARA NAO SER AI -------------------------------------------------------------------------
     def actions(self, state: SlitherlinkState):
         board = state.board
         
