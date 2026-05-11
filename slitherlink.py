@@ -478,8 +478,9 @@ class Slitherlink(Problem):
 
 
     def result(self, state, action):
-
+        # 1. MUDANÇA AQUI: Importar o teu propagador nativo em vez do SAT
         from constraint_propagator import Propagator
+
         board = state.get_board()
         newBoard = copy.deepcopy(board)
 
@@ -489,14 +490,90 @@ class Slitherlink(Problem):
             for act in action:
                 newBoard.add_action(act)
 
-        # propagate after every placement
+        # 2. MUDANÇA AQUI: Correr o Propagador Nativo
         propagator = Propagator(newBoard)
         valid = propagator.propagate()
+        
         if not valid:
-            # mark board as contradicted so actions() returns () immediately
             newBoard.contradiction = True
+        else:
+            # 3. THE LOOP KILLER: Check if this action just closed a tiny loop
+            if self._has_premature_loop(newBoard):
+                newBoard.contradiction = True
 
         return SlitherlinkState(newBoard)
+    
+    def _has_premature_loop(self, board):
+        """
+        Scans the board for any closed loops. 
+        If it finds a closed loop that isn't the final answer, it returns True (Violation).
+        """
+        drawn = board.all_drawn_edges
+        if not drawn: return False
+        
+        # Build a fast adjacency map of connected edges
+        from collections import defaultdict
+        adj = defaultdict(list)
+        for edge in drawn:
+            t, r, c = edge
+            v1 = (r, c)
+            v2 = (r, c + 1) if t == 'h' else (r + 1, c)
+            adj[v1].append(edge)
+            adj[v2].append(edge)
+            
+        visited_edges = set()
+        
+        # Search for connected components
+        for start_edge in drawn:
+            if start_edge in visited_edges:
+                continue
+                
+            comp_edges = set()
+            queue = [start_edge]
+            comp_edges.add(start_edge)
+            comp_vertices = set()
+            
+            while queue:
+                curr = queue.pop(0)
+                t, r, c = curr
+                v1 = (r, c)
+                v2 = (r, c + 1) if t == 'h' else (r + 1, c)
+                comp_vertices.add(v1)
+                comp_vertices.add(v2)
+                
+                for v in (v1, v2):
+                    for neighbor_edge in adj[v]:
+                        if neighbor_edge not in comp_edges:
+                            comp_edges.add(neighbor_edge)
+                            queue.append(neighbor_edge)
+                            
+            visited_edges.update(comp_edges)
+            
+            # Check if this specific component forms a closed loop 
+            # (A loop is closed if EVERY vertex in it has exactly 2 edges touching it)
+            is_closed = True
+            for v in comp_vertices:
+                if len(adj[v]) != 2:
+                    is_closed = False
+                    break
+                    
+            if is_closed:
+                # WE FOUND A CLOSED LOOP!
+                
+                # Violation 1: It's a small loop disjointed from other lines
+                if len(comp_edges) != len(drawn):
+                    return True 
+                    
+                # Violation 2: It's a single loop, but there are still numbers on the board
+                # that haven't been satisfied yet (meaning it closed too early).
+                for r in range(board.rows):
+                    for c in range(board.cols):
+                        hint = board.board[r][c]
+                        if hint != -1 and board.get_active_edges(r, c) != hint:
+                            return True 
+                            
+        return False
+
 
     #FULL GEMINI
     def goal_test(self, state: SlitherlinkState):
@@ -650,6 +727,7 @@ class Slitherlink(Problem):
                 score += 500.0
 
         return score
+
 
 
 
