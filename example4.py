@@ -1,4 +1,4 @@
-from slitherlink import *
+from slitherlink_SAT import *
 
 #Ler grelha da figura 1a:
 board = Board.parse_instance()
