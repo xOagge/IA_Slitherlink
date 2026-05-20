@@ -1,21 +1,50 @@
 class SATSolver:
     """
     Solves Slitherlink constraints using SAT (Boolean Satisfiability) logic.
-    
+
     Each edge is a boolean variable: True = drawn, False = forbidden.
     Constraints are encoded as clauses and solved via unit propagation (DPLL-lite).
-    
+
     No imports needed - pure Python boolean logic.
-    
+
     Variables:
         Each edge in board.all_edges gets a unique integer ID.
         Positive ID = edge must be drawn.
         Negative ID = edge must NOT be drawn.
-    
+
     Clauses:
         Lists of integers (literals). A clause is satisfied if at least one
         literal is True. Unit clause = only one literal left = forced assignment.
+
+    Cache:
+        The solver caches propagation results keyed by a frozen snapshot of the
+        board state (drawn edges + forbidden edges).  When the search visits the
+        same partial state again — which happens constantly in regions where the
+        loop is forced through a corridor — the cached result is returned
+        immediately instead of re-running the full propagation.
+
+        Cache format:
+            _propagation_cache[state_key] = (valid: bool,
+                                             new_mandatory: frozenset,
+                                             new_forbidden: frozenset)
+
+        The cache is a CLASS-LEVEL attribute so it persists across every
+        SATSolver instance created during a single search run.
     """
+
+    # ------------------------------------------------------------------
+    # Class-level cache shared across ALL instances in one search run.
+    # Key   : (frozenset of drawn edges, frozenset of forbidden edges)
+    # Value : (valid: bool, extra_mandatory: frozenset, extra_forbidden: frozenset)
+    # ------------------------------------------------------------------
+    _propagation_cache: dict = {}
+
+    @classmethod
+    def clear_cache(cls):
+        """Call this between independent puzzle runs to free memory."""
+        cls._propagation_cache.clear()
+
+    # ------------------------------------------------------------------
 
     def __init__(self, board):
         self.board = board
@@ -91,12 +120,10 @@ class SATSolver:
 
                 # at most hint: no subset of size hint+1 can all be True
                 for combo in self._combinations(vars_, hint + 1):
-                    # at least one of these must be False = at least one negative literal
                     clauses.append([-v for v in combo])
 
                 # at least hint: no subset of size (len-hint+1) can all be False
                 for combo in self._combinations(vars_, len(vars_) - hint + 1):
-                    # at least one of these must be True = at least one positive literal
                     clauses.append([v for v in combo])
 
         return clauses
@@ -115,7 +142,6 @@ class SATSolver:
         clauses = []
         board = self.board
 
-        # collect all vertices
         all_vertices = set()
         for edge in board.all_edges:
             for v in self._edge_vertices(edge):
@@ -133,31 +159,100 @@ class SATSolver:
                 clauses.append([-v for v in combo])
 
             # no degree 1: if edge A is True, at least one other edge at this vertex is True
-            # encoded as: for each var v, (-v OR v2 OR v3 OR ...)
             for i, v in enumerate(vars_):
                 others = [vars_[j] for j in range(len(vars_)) if j != i]
                 if others:
-                    # if v is True, at least one other must be True
                     clauses.append([-v] + others)
 
         return clauses
 
-    # --- unit propagation (the core SAT engine) ----------------------------------
+    # --- propagation with cache --------------------------------------------------
+
+    def _board_state_key(self):
+        """
+        A hashable snapshot of the current board state.
+
+        We capture both the drawn edges and the forbidden edges because two
+        states can have the same drawn set but different forbidden sets
+        (one might have had extra constraints applied already).
+        """
+        return (
+            frozenset(self.board.all_drawn_edges),
+            frozenset(self.board.unallowed_edges),
+        )
 
     def propagate(self) -> bool:
         """
         Runs unit propagation: if a clause has only one unassigned literal,
-        that literal is forced. Repeat until stable or contradiction found.
+        that literal is forced.  Repeat until stable or contradiction found.
+
+        CACHE BEHAVIOUR
+        ---------------
+        Before running propagation, we check whether we have already processed
+        this exact board state.  If yes, we replay the cached result directly
+        onto the board — no clause iteration needed.
+
+        If no cache hit, we run the full propagation and store the *delta*
+        (only the newly-derived edges, not the ones that were already known)
+        so that replaying is cheap.
 
         Returns True if stable (no contradiction), False if contradiction found.
-        Then writes forced assignments back to the board.
+        Writes forced assignments back to the board either way.
+        """
+        cache_key = self._board_state_key()
+
+        # ---- cache hit ----------------------------------------------------------
+        if cache_key in SATSolver._propagation_cache:
+            valid, new_mandatory, new_forbidden = SATSolver._propagation_cache[cache_key]
+            if valid:
+                self._replay_cached_result(new_mandatory, new_forbidden)
+            return valid
+
+        # ---- cache miss: run the real propagation -------------------------------
+        # Remember what we knew BEFORE propagation so we can store only the delta.
+        known_drawn_before    = frozenset(self.board.all_drawn_edges)
+        known_forbidden_before = frozenset(self.board.unallowed_edges)
+
+        valid = self._run_unit_propagation()
+
+        if valid:
+            self._apply_to_board()
+
+        # Compute the delta (what propagation newly discovered).
+        new_mandatory = frozenset(self.board.all_drawn_edges) - known_drawn_before
+        new_forbidden = frozenset(self.board.unallowed_edges) - known_forbidden_before
+
+        SATSolver._propagation_cache[cache_key] = (valid, new_mandatory, new_forbidden)
+
+        return valid
+
+    def _replay_cached_result(self, new_mandatory: frozenset, new_forbidden: frozenset):
+        """
+        Applies a previously-computed propagation delta to the board without
+        re-running any clause logic.
+        """
+        board = self.board
+        for edge in new_mandatory:
+            if edge not in board.all_drawn_edges:
+                board.mandatory_drawn_edges.add(edge)
+        for edge in new_forbidden:
+            if edge in board.allowed_edges:
+                board.allowed_edges.discard(edge)
+                board.unallowed_edges.add(edge)
+
+    def _run_unit_propagation(self) -> bool:
+        """
+        Core unit-propagation loop (extracted from the old `propagate` so the
+        cache wrapper above can call it cleanly).
+
+        Returns True if no contradiction was found, False otherwise.
+        Does NOT write results to the board — that is done by the caller.
         """
         changed = True
         while changed:
             changed = False
 
             for clause in self.clauses:
-                # evaluate clause against current assignment
                 status, unassigned = self._evaluate_clause(clause)
 
                 if status == 'satisfied':
@@ -167,21 +262,17 @@ class SATSolver:
                     return False
 
                 if status == 'unit':
-                    # only one literal left unassigned - force it
                     lit = unassigned[0]
                     var = abs(lit)
-                    value = lit > 0  # positive literal = True, negative = False
+                    value = lit > 0
 
                     if self.assignment[var] is not None:
-                        # already assigned - check consistency
                         if self.assignment[var] != value:
                             return False
                     else:
                         self.assignment[var] = value
                         changed = True
 
-        # write results back to board
-        self._apply_to_board()
         return True
 
     def _evaluate_clause(self, clause) -> tuple:
@@ -203,7 +294,6 @@ class SATSolver:
             if val is None:
                 unassigned.append(lit)
             else:
-                # literal is True if (positive and assigned True) or (negative and assigned False)
                 lit_true = (lit > 0 and val) or (lit < 0 and not val)
                 if lit_true:
                     return 'satisfied', []

@@ -452,9 +452,9 @@ class Slitherlink(Problem):
         
         drawn = board.all_drawn_edges
 
-        # (Opcional) Mantive o teu print original para debug
-        print("\n--- A explorar o seguinte estado: ---")
-        print(state.board.print_complete())
+        # # (Opcional) Mantive o teu print original para debug
+        # print("\n--- A explorar o seguinte estado: ---")
+        # print(state.board.print_complete())
 
         # =================================================================
         # O MOTOR DE EXTREMIDADES (MRV - Minimum Remaining Values)
