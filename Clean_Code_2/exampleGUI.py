@@ -42,6 +42,9 @@ def main():
     # goal_node = simulated_annealing(problem)
     # goal_node = genetic_search(problem)
 
+    print(goal_node.state.board.print_complete())
+    print(goal_node.state.board.print())
+
     end_time = time.perf_counter()        # <-- ADDED TIMER END
     print(f"Solution found in {end_time - start_time:.4f} seconds!") # <-- ADDED PRINT
 

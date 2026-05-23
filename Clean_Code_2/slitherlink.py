@@ -438,43 +438,33 @@ class Slitherlink(Problem):
     def __init__(self, board: Board, gui=None):
         """O construtor especifica o estado inicial."""
         self.gui = gui
+        
+        # Fazemos a propagação inicial numa CÓPIA da board, para que 
+        # a board original lida do input permaneça imaculada (para os testes do professor).
+        search_board = board.copy()
 
-        # 1. Correr o Propagador Inicial (Padrões fixos dos números)
         from initial_propagator import InitialPropagator
         from SATOracle import ConstraintPropagator
         
-        # O InitialPropagator precisa do estado, mas vamos passá-lo provisoriamente
-        temp_state = SlitherlinkState(board)
+        temp_state = SlitherlinkState(search_board)
         init_propagator = InitialPropagator(temp_state)
 
         forbidden = init_propagator.unallowed_edges()
         mandatory = init_propagator.mandatory_edges()
 
-        # Injetar as deduções do InitialPropagator na Board
-        board.unallowed_edges = board.allowed_edges - (board.allowed_edges - set(forbidden))
-        board.allowed_edges = board.allowed_edges - set(forbidden)
-        board.mandatory_drawn_edges = mandatory
-        
-        # Colocamos tudo no drawn_edges para que o ConstraintPropagator 
-        # consiga usar essas arestas para calcular o grau (v_conn)
-        board.drawn_edges.update(mandatory)
+        # Injetar as deduções do InitialPropagator na Board de Procura
+        search_board.unallowed_edges = search_board.allowed_edges - (search_board.allowed_edges - set(forbidden))
+        search_board.allowed_edges = search_board.allowed_edges - set(forbidden)
+        search_board.mandatory_drawn_edges = mandatory
+        search_board.drawn_edges.update(mandatory)
 
-        # PRINT 2: Tabuleiro após os padrões estáticos (Regras diretas dos números)
-        print("Tabuleiro após Propagador Inicial (Padrões Fixos):")
-        print(board.print_complete())
-
-        # 2. Correr o NOVO Motor de Dedução (Efeito Cascata)
-        propagator = ConstraintPropagator(board)
+        # Correr o Motor de Dedução (Efeito Cascata)
+        propagator = ConstraintPropagator(search_board)
         allowed_actions = propagator.propagate()
 
-        # PRINT 3: Tabuleiro após a reação em cadeia das regras de vértices e células
-        print("Tabuleiro Inicial após Propagação (Initial + Cascata):")
-        print(board.print_complete())
-
-        # 3. Criar o estado inicial verdadeiro
-        initial_state = SlitherlinkState(board)
+        # Criar o estado inicial verdadeiro PARA A PROCURA
+        initial_state = SlitherlinkState(search_board)
         
-        # 4. Guardar as jogadas válidas para a DFS arrancar
         if allowed_actions is False:
             initial_state.is_valid = False
             initial_state.allowed_actions = []
@@ -483,6 +473,10 @@ class Slitherlink(Problem):
             initial_state.allowed_actions = allowed_actions
             
         self.initial = initial_state
+        self.visited_hashes = set()
+
+        #print(self.initial.board.print_complete())
+
 
     #AIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIIA
     def actions(self, state: SlitherlinkState):
@@ -561,13 +555,18 @@ class Slitherlink(Problem):
 
         # 1 --- CRIAR NOVA BOARD, APLICAR ACTION, E PROPAGAR CONSTRAINTS
         new_board = state.board.copy()  #copy board
-        new_board.drawn_edges.add(action) #draw actions
+        #draw action/actions
+        if isinstance(action, tuple) and isinstance(action[0], str):
+            new_board.drawn_edges.add(action)
+        else:
+            for act in action:
+                new_board.drawn_edges.add(act)
         #propagate on new board, and check if valid (propagate altera a new_board em si)
         propagator = ConstraintPropagator(new_board)
         is_valid = propagator.propagate()
         new_state = SlitherlinkState(new_board) #define new state
 
-        print(new_state.board.print_complete())
+        #print(new_state.board.print_complete())
 
         # 2 --- VERIFICAR SE NOVA BOARD E VALIDA
 
