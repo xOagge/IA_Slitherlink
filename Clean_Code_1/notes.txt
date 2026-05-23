@@ -1,0 +1,4 @@
+this version has a well developed constraint propagator, which will be usefull for the video report to show
+what the constraint propagator is able to do in itself.
+
+still has errors like in some cases 3 degree vertices
