@@ -506,7 +506,11 @@ class Slitherlink(Problem):
         from SATOracle import SATSolver
 
         board = state.get_board()
-        newBoard = copy.deepcopy(board)
+        newBoard = copy.copy(board)
+        newBoard.drawn_edges = set(board.drawn_edges)
+        newBoard.mandatory_drawn_edges = set(board.mandatory_drawn_edges)
+        newBoard.allowed_edges = set(board.allowed_edges)
+        newBoard.unallowed_edges = set(board.unallowed_edges)
 
         if isinstance(action, tuple) and isinstance(action[0], str):
             newBoard.add_action(action)
