@@ -13,7 +13,7 @@ def main():
     board = Board.parse_instance()
 
     #declare board
-    board_list:list = board.get_board()
+    board_list:list = board.board
 
 
     print("Starting search...")           # <-- ADDED
@@ -23,7 +23,7 @@ def main():
     problem = Slitherlink(board)
 
     # #blind
-    # goal_node = depth_first_tree_search(problem)                  #(1)
+    goal_node = depth_first_tree_search(problem)                  #(1)
     #goal_node = depth_first_graph_search(problem)
     # goal_node = depth_first_graph_search(problem)
     # goal_node = breadth_first_tree_search(problem)
@@ -34,7 +34,7 @@ def main():
     
     # #heuristic
     # goal_node = astar_search(problem)
-    goal_node = greedy_search(problem)                              #(2)
+    #goal_node = greedy_search(problem)                              #(2)
     #goal_node = recursive_best_first_search(problem)
 
     # #local search
