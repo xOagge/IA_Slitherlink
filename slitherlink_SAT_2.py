@@ -19,9 +19,12 @@ from search import (
     Node,
     astar_search,
     breadth_first_tree_search,
-    depth_first_tree_search,
+    depth_first_graph_search,
+    iterative_deepening_search,
     greedy_search,
     recursive_best_first_search,
+    hill_climbing,
+    depth_first_tree_search
 )
 
 class SlitherlinkState:
@@ -49,9 +52,7 @@ class SlitherlinkState:
         return self.board.all_drawn_edges == other.board.all_drawn_edges
 
     def __hash__(self):
-        # Transforma o set de edges numa versão 'congelada' (frozenset)
-        # para que o algoritmo consiga usar isto como chave de memória rápida.
-        return hash(frozenset(self.board.all_drawn_edges))
+        return hash(self.board.state_signature)
 
 class Board:
     """Representação interna de um tabuleiro de Slitherlink."""
@@ -94,18 +95,11 @@ class Board:
 
     @staticmethod
     def parse_instance():
-        """Lê o test do standard input (stdin) que é passado como argumento
-        e retorna uma instância da classe Board.
-
-        Por exemplo:
-            $ python3 pipe.py < test-01.txt
-
-            > from sys import stdin
-            > line = stdin.readline().split()
-        """
-        
-        #layout = [line.split() for line in stdin]
-        layout = [[-1 if cell == '.' else int(cell) for cell in line.split()] for line in stdin]
+        layout = [
+            [-1 if cell == '.' else int(cell) for cell in line.split()]
+            for line in stdin
+            if line.strip()
+          ]
         return Board(layout)
 
     # TODO: outros metodos da classe ----------------------------------
@@ -136,6 +130,9 @@ class Board:
         #vai ser guardada as mandatory edges, imutavel
         self.mandatory_drawn_edges = set()
 
+    @property
+    def state_signature(self):
+        return tuple(sorted(self.all_drawn_edges))
 
     @property
     def all_drawn_edges(self):
@@ -321,10 +318,10 @@ class Board:
             row_cells = []
             for c in range(self.cols):
                 # Verificar cada uma das 4 arestas da célula (0 ou 1)
-                top = '1' if ('h', r, c) in self.drawn_edges else '0'
-                right = '1' if ('v', r, c + 1) in self.drawn_edges else '0'
-                bottom = '1' if ('h', r + 1, c) in self.drawn_edges else '0'
-                left = '1' if ('v', r, c) in self.drawn_edges else '0'
+                top = '1' if ('h', r, c) in self.all_drawn_edges else '0'
+                right = '1' if ('v', r, c + 1) in self.all_drawn_edges else '0'
+                bottom = '1' if ('h', r + 1, c) in self.all_drawn_edges else '0'
+                left = '1' if ('v', r, c) in self.all_drawn_edges else '0'
                 
                 # Juntar os 4 bits da célula
                 cell_repr = top + right + bottom + left
@@ -433,9 +430,9 @@ class Slitherlink(Problem):
         #guardar as mandatory edges
         board.mandatory_drawn_edges = mandatory
 
-        #print para eu visualizar
-        print("Mandatory Edges")
-        print(board.print_complete())
+        # #print para eu visualizar
+        # print("Mandatory Edges")
+        # print(board.print_complete())
 
         # com errou a correr example 4 percebi que para seguir o template
         #em search.py e necessario esta variavel self.initial
@@ -452,9 +449,9 @@ class Slitherlink(Problem):
         
         drawn = board.all_drawn_edges
 
-        # (Opcional) Mantive o teu print original para debug
-        print("\n--- A explorar o seguinte estado: ---")
-        print(state.board.print_complete())
+        # # # (Opcional) Mantive o teu print original para debug
+        # print("\n--- A explorar o seguinte estado: ---")
+        # print(state.board.print())
 
         # =================================================================
         # O MOTOR DE EXTREMIDADES (MRV - Minimum Remaining Values)
@@ -503,14 +500,18 @@ class Slitherlink(Problem):
         return tuple(feasible_actions)
     
     def result(self, state, action):
-        from SATOracle import SATSolver
+        from SATOracle_2 import SATSolver
 
         board = state.get_board()
-        newBoard = copy.copy(board)
-        newBoard.drawn_edges = set(board.drawn_edges)
-        newBoard.mandatory_drawn_edges = set(board.mandatory_drawn_edges)
-        newBoard.allowed_edges = set(board.allowed_edges)
-        newBoard.unallowed_edges = set(board.unallowed_edges)
+
+        # newBoard = copy.deepcopy(board)
+
+         # ADD THIS INSTEAD:
+        newBoard = Board(board.board) # Shares the same grid reference (zero memory cost)
+        newBoard.drawn_edges = board.drawn_edges.copy()
+        newBoard.mandatory_drawn_edges = board.mandatory_drawn_edges.copy()
+        newBoard.allowed_edges = board.allowed_edges.copy()
+        newBoard.unallowed_edges = board.unallowed_edges.copy()
 
         if isinstance(action, tuple) and isinstance(action[0], str):
             newBoard.add_action(action)
@@ -742,47 +743,31 @@ class Slitherlink(Problem):
                 score += 500.0
 
         return score
+    
+    def value(self, state: SlitherlinkState):
+        """
+        Método obrigatório para algoritmos de Local Search (Hill Climbing, Sim. Annealing).
+        Estes algoritmos tentam MAXIMIZAR o valor. Como a nossa heurística 'h' 
+        calcula uma penalização (menor é melhor), retornamos o valor negativo.
+        """
+        from search import Node
+        # Create a dummy node to reuse your existing heuristic logic
+        dummy_node = Node(state)
+        
+        # Return negative heuristic so the algorithm climbs UP to 0
+        return -self.h(dummy_node)
 
 
 if __name__ == "__main__":
-    # TODO:
-    # Ler o ficheiro do standard input,
-    # Usar uma técnica de procura para resolver a instância,
-    # Retirar a solução a partir do nó resultante,
-    # Imprimir para o standard output no formato indicado.
-
+    # 1. Read the input [cite: 93]
     board = Board.parse_instance()
-
-
-
-
-
-    # def actions(self, state: SlitherlinkState):
-    #     """Retorna uma lista de ações que podem ser executadas a
-    #     partir do estado passado como argumento."""
-
-    #     print("\n--- A explorar o seguinte estado: ---")
-    #     print(state.board.print_complete())
     
-
-    #     # ORDEM, FREE EDGES -> CONTINUACOES EM LINHA -> NAO EXCEDE VALOR DE CELULAS
-    #     # esta ordem parece ser optimizada para dar narrow dawn das possibilidades
-
-    #     # todas as acoes fisicamente disponiveis
-    #     board = state.board
-    #     actions = board.allowed_edges - board.all_drawn_edges
-
-    #     #de todas as opcoes de acoes, vou encontrar as que sao adjacentes e ao criam branches
-    #     adjacent_actions = []
-    #     if len(board.all_drawn_edges) != 0:
-    #         for action in actions:
-    #             if board.is_action_adjacent_to_edge(action):
-    #                 adjacent_actions.append(action)
-    #     else: adjacent_actions = actions
-
-    #     #avaliar acoes que nao quebrem as regras de limite de linhas a volta de uma celula
-    #     feasable_actions = []
-    #     for action in adjacent_actions:
-    #         if board.is_action_possible(action): feasable_actions.append(action)
-        
-    #     return tuple(feasable_actions)
+    # 2. Initialize the problem
+    problem = Slitherlink(board)
+    
+    # 3. Run the search algorithm
+    goal_node = depth_first_tree_search(problem)
+    
+    # 4. Print the final board state to standard output [cite: 62, 95]
+    if goal_node:
+        print(goal_node.state.board.print())
