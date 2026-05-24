@@ -25,13 +25,14 @@ class InitialPropagator:
     #return a todas as mandatory edges
     def mandatory_edges(self) -> tuple:
         return self.case_3_0_edges()[0] | self.mandatory_corner_3_edges() \
-             | self.mandatory_3_3_edges() | self.case_3_3_diagonal_edges()[0] \
+             | self.case_3_3_edges()[0] | self.case_3_3_diagonal_edges()[0] \
              | self.mandatory_3_0_diagonal_edges()
 
     #return a todas as unallowed edges
-    def unallowed_edges(self) -> tuple:
+    def forbidden_edges(self) -> tuple:
         return self.case_3_0_edges()[1] | self.unallowed_0_edges() \
-             | self.unallowed_corner_1_edges() | self.case_3_3_diagonal_edges()[1]
+             | self.case_3_3_edges()[1] | self.unallowed_corner_1_edges() \
+             | self.case_3_3_diagonal_edges()[1] | self.unallowed_0_1_edges()
 
     # casos (teem obrigatorios e proibidos), como os relacionamentos, os "casos" sao
     # mais complicados ---------------------------------------------------------
@@ -110,6 +111,44 @@ class InitialPropagator:
                                              ("v", r+2, c), ("v", r-1, c+2)  ])
         return forced_edges, forbidden_edges
 
+    def case_3_3_edges(self) -> tuple:
+        """duas celulas com 3 adjacentes leva a duas solucoes com um padrao em
+        forma de S, ou S invertido, ambas as solucoes teem a edge entre das duas
+        celulas preenchida, e ambas as duas edges mais afastadas"""
+        #obter a board list
+        board:list = self.board.board
+        rows = len(board)
+        cols = len(board[0])
+
+        # podia copiar o pensamento de 3_3_diagonal para aquii, mas vou deixar
+        #a minha implementacao que inventei de cabeça
+        forced_edges = set()
+        forbidden_edges = set()
+        for r in range(rows):
+            for c in range(cols):
+                if board[r][c] == 3:
+                    #lista com coordenadas de celulas adjacentes
+                    a_cells = self.board.adjacent_cell((r, c))
+                    for r2, c2 in a_cells:
+                        if board[r2][c2] == 3:
+                            # cell2 acima da cell1
+                            if r2 < r:
+                                forced_edges.update([('h', r-1, c), ('h', r, c), ('h', r+1, c)])
+                                forbidden_edges.update([('h', r, c-1), ('h', r, c+1)])
+                            # cell2 abaixo da cell1
+                            elif r2 > r:
+                                forced_edges.update([('h', r, c), ('h', r+1, c), ('h', r+2, c)])
+                                forbidden_edges.update([('h', r+1, c-1), ('h', r+1, c+1)])
+                            # cell2 a esquerda da cell1
+                            elif c2 < c:
+                                forced_edges.update([('v', r, c-1), ('v', r, c), ('v', r, c+1)])
+                                forbidden_edges.update([('v', r-1, c), ('v', r+1, c)])
+                            # cell2 a direita da cell1
+                            elif c2 > c:
+                                forced_edges.update([('v', r, c), ('v', r, c+1), ('v', r, c+2)])
+                                forbidden_edges.update([('v', r-1, c+1), ('v', r+1, c+1)])
+        return forced_edges, forbidden_edges
+
     # mandatorys -----------------------
     def mandatory_corner_3_edges(self) -> tuple:
         """Uma celula no canto com um 3 tem duas solucoes, no entanto ambas teem as duas
@@ -134,39 +173,6 @@ class InitialPropagator:
             if board[r][c] == 3 and r == rows_i and c == cols_j:
                 forced_edges.update([('h', rows_i+1, c), ('v', r, cols_j+1)])
         return forced_edges
-    
-    def mandatory_3_3_edges(self) -> tuple:
-        """duas celulas com 3 adjacentes leva a duas solucoes com um padrao em
-        forma de S, ou S invertido, ambas as solucoes teem a edge entre das duas
-        celulas preenchida, e ambas as duas edges mais afastadas"""
-        #obter a board list
-        board:list = self.board.board
-        rows = len(board)
-        cols = len(board[0])
-
-        # podia copiar o pensamento de 3_3_diagonal para aquii, mas vou deixar
-        #a minha implementacao que inventei de cabeça
-        forced_edges = set()
-        for r in range(rows):
-            for c in range(cols):
-                if board[r][c] == 3:
-                    #lista com coordenadas de celulas adjacentes
-                    a_cells = self.board.adjacent_cell((r, c))
-                    for r2, c2 in a_cells:
-                        if board[r2][c2] == 3:
-                            # cell2 acima da cell1
-                            if r2 < r:
-                                forced_edges.update([('h', r-1, c), ('h', r, c), ('h', r+1, c)])
-                            # cell2 abaixo da cell1
-                            elif r2 > r:
-                                forced_edges.update([('h', r, c), ('h', r+1, c), ('h', r+2, c)])
-                            # cell2 a esquerda da cell1
-                            elif c2 < c:
-                                forced_edges.update([('v', r, c-1), ('v', r, c), ('v', r, c+1)])
-                            # cell2 a direita da cell1
-                            elif c2 > c:
-                                forced_edges.update([('v', r, c), ('v', r, c+1), ('v', r, c+2)])
-        return forced_edges
 
     def mandatory_3_0_diagonal_edges(self):
         """caso 3-0 diaognais, que leva a termos duas edges obrigatorias
@@ -177,8 +183,6 @@ class InitialPropagator:
         cols = len(board[0])
 
         forced_edges = set()
-        forbidden_edges = set()
-
         diagonals = [(1,1), (-1,-1), (-1,1), (1,-1)]
 
         for r in range(rows):
@@ -209,9 +213,6 @@ class InitialPropagator:
                         forced_edges.update([('h', r, c),('v', r, c)])
 
         return forced_edges
-
-                        
-
 
 
     #unallowed ---------------------
@@ -254,3 +255,48 @@ class InitialPropagator:
                     adjacent_edges = self.board.get_cell_edges(r, c)
                     forbidden_edges.update(adjacent_edges)
         return forbidden_edges
+    
+    def unallowed_0_1_edges(self) -> tuple:
+        """1 e 0 na diagonal leva a que todas as edges do 0 e e do 1
+        perto do 0 sejam proibidas. vamos apenas dar set a forbidden as 
+        edges da celula 1, pois unallowed_0_edges ja trata das edges de 
+        todas as celulas 0. Logica e copiada de mandatory_3_0_diagonal_edges,
+        basicamente a mesma coisa, mas forbidden"""
+
+        board = self.board.board
+        rows = len(board)
+        cols = len(board[0])
+
+        forbidden_edges = set()
+        diagonals = [(1,1), (-1,-1), (-1,1), (1,-1)]
+
+        for r in range(rows):
+            for c in range(cols):
+                #se nao e 3, continuar
+                if board[r][c] != 1:
+                    continue
+                
+                for dr, dc in diagonals:
+                    r2, c2 = r + dr, c + dc
+                    #se out of bound, continuar
+                    if not (0 <= r2 < rows and 0 <= c2 < cols):
+                        continue
+                    #se nao e 0, continuar
+                    if board[r2][c2] != 0:
+                        continue
+                    
+                    if dr == 1 and dc == 1: # 0 baixo direita
+                        forbidden_edges.update([('h', r+1, c),('v', r, c+1)])
+
+                    elif dr == 1 and dc == -1: # 0 baixo esquerda
+                        forbidden_edges.update([('h', r+1, c),('v', r, c)])
+
+                    elif dr == -1 and dc == 1: # 0 cima direita
+                        forbidden_edges.update([('h', r, c),('v', r, c+1)])
+
+                    elif dr == -1 and dc == -1: # 0 cima esquerda
+                        forbidden_edges.update([('h', r, c),('v', r, c)])
+
+        return forbidden_edges
+    
+    

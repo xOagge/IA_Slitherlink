@@ -44,10 +44,21 @@ class SlitherlinkState:
         return self.board
     
     def __eq__(self, other):
-        pass
+        if not isinstance(other, SlitherlinkState):
+            return False
+            
+        # 1. Faz a comparação matemática
+        is_equal = self.board.all_drawn_edges == other.board.all_drawn_edges
+        
+        # 2. Se forem de facto iguais, avisa no terminal!
+        if is_equal:
+            print(f"⚠️ CORTE DFS: Tabuleiro repetido detetado! (Arestas: {len(self.board.drawn_edges)}) - Ramo cortado.")
+            
+        return is_equal
 
     def __hash__(self):
-        pass
+        # Muito mais leve e rápido de calcular
+        return hash(frozenset(self.board.all_drawn_edges))
 
 class Board:
     """Representação interna de um tabuleiro de Slitherlink."""
@@ -133,20 +144,45 @@ class Board:
             ('v', r, c) for r in range(self.rows) for c in range(self.cols + 1)
         }
 
-        #TODAS AS EDGES - PROIBIDAS
-        self.allowed_edges = self.all_edges
-        #EDGES PROIBIDAS
-        self.unallowed_edges = set()
+        
+        #GLOBAL EDGES
+        self.global_forbidden = set() #globally forbidden
+        self.global_drawn = set() #globally mandatory
+        self.global_domain = set() #globally all edges we can interact with
 
-        #EDGES DESENHADAS AO LONGO DA PROCURA
-        self.drawn_edges = set()
-        #EDGES OBRIGATORIAS
-        self.mandatory_drawn_edges = set()
+        #STATE LEVEL RULES
+        self.forbidden_edges = set() #state forbidden
+        self.drawn_edges = set() #state drawn
+
+        #RECENTLY UPDATED EDGES
+        self.recently_changed_edges = set()
 
     @property
     def all_drawn_edges(self):
-        """ uniao de edges desenhadas e obrigatorias"""
-        return self.drawn_edges | self.mandatory_drawn_edges
+        """ALL STATE DRAWN EDGES"""
+        return self.drawn_edges | self.global_drawn
+    
+    @property
+    def all_forbidden_edges(self):
+        """ALL STATE FORBIDDEN EDGES"""
+        return self.forbidden_edges | self.global_forbidden
+
+
+    def draw_edge(self, action):
+        self.drawn_edges.add(action)
+        self.recently_changed_edges.add(action)
+
+    def draw_edges(self, action):
+        self.drawn_edges.update(action)
+        self.recently_changed_edges.update(action)
+    
+    def forbid_edge(self, action):
+        self.forbidden_edges.add(action)
+        self.recently_changed_edges.add(action)
+    
+    def forbid_edges(self, action):
+        self.forbidden_edges.update(action)
+        self.recently_changed_edges.update(action)
 
 
     #CALCULAR CONECTIVIDADE DAS EDGES ------------------
@@ -198,7 +234,7 @@ class Board:
         drawn = relevant_edges.intersection(self.all_drawn_edges)
 
         #relevantes proibidas
-        prohibited = relevant_edges.intersection(self.unallowed_edges)
+        prohibited = relevant_edges.intersection(self.all_forbidden_edges)
 
         undrawn = relevant_edges - drawn - prohibited
 
@@ -251,7 +287,7 @@ class Board:
             return True
         return False
 
-    def cells_adjacent_to_action(self, action):
+    def cells_adjacent_to_edge(self, action):
         """metodo criado para encontra cells adjacented? afetadas
         pela criacao de uma linha, vai ser usado para avaliar se esta
         nova linha vai levar a uma celula exceder o valor limite proprio"""
@@ -267,7 +303,7 @@ class Board:
         return cells_list
     
     def is_action_possible(self, action):
-        cells_list = self.cells_adjacent_to_action(action)
+        cells_list = self.cells_adjacent_to_edge(action)
 
         #para as celulas afetadas, vamos ver se ja nao teem linhas limite
         for cell in cells_list:
@@ -286,47 +322,46 @@ class Board:
     #METODO DE COPY
 
     #AIAIAIAIAIAAIAIAIAIIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIAIA
-    def copy(self):
+    def new_state(self):
         """
-        Cria uma cópia profunda (deep copy) do estado do tabuleiro atual.
-        Essencial para a procura em árvore (DFS) não sobrepor estados.
+        Deep copy do Board para evitar partilha de estado entre nós da procura.
         """
-        # 1. Cria um novo tabuleiro usando o mesmo layout base
+
+        # 1. Nova board com o mesmo layout base
         novo_tabuleiro = Board(self.board)
-        
-        # 2. Copia as variáveis de estado (os sets) para a nova memória
-        novo_tabuleiro.allowed_edges = self.allowed_edges.copy()
-        novo_tabuleiro.unallowed_edges = self.unallowed_edges.copy()
+
+        # 2. Copiar GLOBALS (normalmente são partilhados logicamente,
+        # mas se queres total isolamento na search tree, copia tudo)
+        novo_tabuleiro.global_forbidden = self.global_forbidden.copy()
+        novo_tabuleiro.global_drawn = self.global_drawn.copy()
+        novo_tabuleiro.global_domain = self.global_domain.copy()
+
+        # 3. Copiar STATE (isto é o que muda durante a procura)
+        novo_tabuleiro.forbidden_edges = self.forbidden_edges.copy()
         novo_tabuleiro.drawn_edges = self.drawn_edges.copy()
-        novo_tabuleiro.mandatory_drawn_edges = self.mandatory_drawn_edges.copy()
-        
+
+        # 4. Want to reset recent actions, as its used for the state applied actions
+        novo_tabuleiro.recently_changed_edges = set()
+
         return novo_tabuleiro
 
     #AIAIAIAIAIAIAIAIIAIAIAIAIAIAIAIAIIAIA
     def print(self) -> str:
-        """
-        Retorna a representação do tabuleiro no formato de output exigido:
-        4 bits por célula (top, right, bottom, left), separados por tabulação (\t).
-        """
         output_lines = []
         
         for r in range(self.rows):
             row_cells = []
             for c in range(self.cols):
-                # Verificar se cada uma das 4 arestas da célula existe na solução final
-                top    = "1" if ('h', r, c) in self.all_drawn_edges else "0"
-                right  = "1" if ('v', r, c+1) in self.all_drawn_edges else "0"
-                bottom = "1" if ('h', r+1, c) in self.all_drawn_edges else "0"
-                left   = "1" if ('v', r, c) in self.all_drawn_edges else "0"
-                
-                # Juntar os 4 bits numa string (ex: "1010")
-                cell_bits = f"{top}{right}{bottom}{left}"
-                row_cells.append(cell_bits)
-                
-            # Juntar as células da mesma linha com a tabulação exigida
+
+                top    = "1" if ('h', r, c) in self.drawn_edges else "0"
+                right  = "1" if ('v', r, c+1) in self.drawn_edges else "0"
+                bottom = "1" if ('h', r+1, c) in self.drawn_edges else "0"
+                left   = "1" if ('v', r, c) in self.drawn_edges else "0"
+
+                row_cells.append(f"{top}{right}{bottom}{left}")
+
             output_lines.append("\t".join(row_cells))
-            
-        # Juntar todas as linhas com a quebra de linha
+
         return "\n".join(output_lines)
 
     #FULL GEMINI - usado durante o desenvolvimento para visualizar como
@@ -343,8 +378,8 @@ class Board:
             """
             output = []
             
-            # Fallback seguro caso a variável unallowed_edges ainda não exista no board
-            unallowed = getattr(self, 'unallowed_edges', set())
+            # Fallback seguro caso a variável forbidden_edges ainda não exista no board
+            unallowed = getattr(self, 'forbidden_edges', set())
             
             for r in range(self.rows):
                 # 1. Linha das arestas HORIZONTAIS e Vértices
@@ -353,7 +388,7 @@ class Board:
                     h_line += "+"
                     if ('h', r, c) in self.all_drawn_edges:
                         h_line += "---"
-                    elif ('h', r, c) in unallowed:
+                    elif ('h', r, c) in self.all_forbidden_edges:
                         h_line += " x "  # Representação visual da proibição horizontal
                     else:
                         h_line += "   "
@@ -365,7 +400,7 @@ class Board:
                 for c in range(self.cols):
                     if ('v', r, c) in self.all_drawn_edges:
                         v_line += "|"
-                    elif ('v', r, c) in unallowed:
+                    elif ('v', r, c) in self.all_forbidden_edges:
                         v_line += "x"    # Representação visual da proibição vertical
                     else:
                         v_line += " "
@@ -377,7 +412,7 @@ class Board:
                 # Última aresta vertical da linha
                 if ('v', r, self.cols) in self.all_drawn_edges:
                     v_line += "|"
-                elif ('v', r, self.cols) in unallowed:
+                elif ('v', r, self.cols) in self.all_forbidden_edges:
                     v_line += "x"
                 else:
                     v_line += " "
@@ -389,7 +424,7 @@ class Board:
                 last_h_line += "+"
                 if ('h', self.rows, c) in self.all_drawn_edges:
                     last_h_line += "---"
-                elif ('h', self.rows, c) in unallowed:
+                elif ('h', self.rows, c) in self.all_forbidden_edges:
                     last_h_line += " x "
                 else:
                     last_h_line += "   "
@@ -400,70 +435,39 @@ class Board:
             return "\n".join(output)   
     
 class Slitherlink(Problem):
-    # def __init__(self, board: Board, gui=None):
-    #     """O construtor especifica o estado inicial."""
-
-    #     self.gui = gui
-
-    #     # ----------  edges obrigatorias e proibidas ------------
-    #     from initial_propagator import InitialPropagator
-    #     temp_state = SlitherlinkState(board)
-    #     propagator = InitialPropagator(temp_state)
-
-    #     # obter constrainsts
-    #     forbidden = propagator.unallowed_edges() #- Passou a comentário de modo a dar lugar ao que está abaixo
-    #     mandatory = propagator.mandatory_edges() 
-
-    #     # #Feita alteração de modo a incluir o EdgeTriggerResolver
-    #     # resolver = EdgeTriggerResolver(temp_state)
-    #     # mandatory, forbidden = resolver.resolve_complete()
-
-    #     #remover proibicoes removendo as edges proibidas de allowed_edges
-    #     #parece complicado, mas assim temos os forbidden, com verificacao que todas as 
-    #     #edge coordinates percencem a borda. mais por questao de consistencia
-    #     board.unallowed_edges = board.allowed_edges - (board.allowed_edges - set(forbidden))
-    #     board.allowed_edges = board.allowed_edges - set(forbidden)
-    #     #guardar as mandatory edges
-    #     board.mandatory_drawn_edges = mandatory
-
-    #     #print para eu visualizar
-    #     print("Mandatory Edges")
-    #     print(board.print_complete())
-
-    #     # com errou a correr example 4 percebi que para seguir o template
-    #     #em search.py e necessario esta variavel self.initial
-    #     initial_state = SlitherlinkState(board)
-    #     self.initial = initial_state
-
     def __init__(self, board: Board, gui=None):
         """O construtor especifica o estado inicial."""
-        self.gui = gui
-        
-        # Fazemos a propagação inicial numa CÓPIA da board, para que 
-        # a board original lida do input permaneça imaculada (para os testes do professor).
-        search_board = board.copy()
 
+        #local import para nao criar circularidade de imports
         from initial_propagator import InitialPropagator
         from SATOracle import ConstraintPropagator
+
+        self.gui = gui
         
-        temp_state = SlitherlinkState(search_board)
+        #CALCULAR GLOBAL FORBIDDEN E MANDATORY EDGES
+        Board = board.new_state()
+        
+        temp_state = SlitherlinkState(Board)
         init_propagator = InitialPropagator(temp_state)
 
-        forbidden = init_propagator.unallowed_edges()
+        forbidden = init_propagator.forbidden_edges()
         mandatory = init_propagator.mandatory_edges()
 
-        # Injetar as deduções do InitialPropagator na Board de Procura
-        search_board.unallowed_edges = search_board.allowed_edges - (search_board.allowed_edges - set(forbidden))
-        search_board.allowed_edges = search_board.allowed_edges - set(forbidden)
-        search_board.mandatory_drawn_edges = mandatory
-        search_board.drawn_edges.update(mandatory)
+        #INJETAR GLOBAIS EM BOARD
+        Board.global_forbidden = Board.all_edges.intersection(set(forbidden))
+        Board.global_drawn = Board.all_edges.intersection(set(mandatory))
+        Board.global_domain = Board.all_edges - Board.global_forbidden
+        Board.recently_changed_edges = Board.global_drawn | Board.global_forbidden
+
+        # print("--- Board after Initial Constraints (Before Cascade Propagation) ---")
+        # print(Board.print_complete())
 
         # Correr o Motor de Dedução (Efeito Cascata)
-        propagator = ConstraintPropagator(search_board)
+        propagator = ConstraintPropagator(Board)
         allowed_actions = propagator.propagate()
 
         # Criar o estado inicial verdadeiro PARA A PROCURA
-        initial_state = SlitherlinkState(search_board)
+        initial_state = SlitherlinkState(Board)
         
         if allowed_actions is False:
             initial_state.is_valid = False
@@ -475,11 +479,80 @@ class Slitherlink(Problem):
         self.initial = initial_state
         self.visited_hashes = set()
 
-        #print(self.initial.board.print_complete())
+        #mostra InitialPropagator + ConstraintPropagator
+        # print("--- Board after InitialPropagator + ConstraintPropagator ---")
+        # print(self.initial.board.print_complete())
 
+    #AIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIIA
+    def rank_actions(self, state: SlitherlinkState, actions: list) -> list:
+        """
+        Orders actions from most promising to least promising to optimize DFS branching.
+        Does not alter legality; only provides a heuristic sorting.
+        """
+        board = state.board
+        drawn = board.all_drawn_edges
+
+        # 1. Precompute vertex degrees for O(1) lookups
+        # We only care about vertices currently touched by the snake
+        vertex_degrees = {}
+        for edge in drawn:
+            v1, v2 = board.get_edge_vertices(edge)
+            vertex_degrees[v1] = vertex_degrees.get(v1, 0) + 1
+            vertex_degrees[v2] = vertex_degrees.get(v2, 0) + 1
+
+        def score_action(action):
+            score = 0
+            v1, v2 = board.get_edge_vertices(action)
+            d1 = vertex_degrees.get(v1, 0)
+            d2 = vertex_degrees.get(v2, 0)
+
+            # --- METRIC 1: CONNECTIVITY & FRAGMENTATION ---
+            # Highest priority: Extending or joining existing paths.
+            
+            if d1 == 1 and d2 == 1:
+                # Joins two loose ends. 
+                # If it joins two different segments, it drastically reduces fragmentation.
+                # If it closes a premature loop, your propagator will kill it INSTANTLY. 
+                # Either way, it's a fantastic move for DFS (progress or fast-fail).
+                score += 100
+            elif d1 == 1 or d2 == 1:
+                # Extends an existing loose end.
+                score += 50
+            elif d1 == 0 and d2 == 0:
+                # Creates a brand new isolated segment in the middle of nowhere.
+                # Highly penalized as it increases ambiguity and fragmentation.
+                score -= 20
+
+            # --- METRIC 2: CELL PRESSURE & PROGRESS ---
+            # Prioritize edges that help satisfy highly constrained cells.
+            
+            adj_cells = board.cells_adjacent_to_edge(action)
+            for r, c in adj_cells:
+                hint = board.board[r][c]
+                if hint != -1 and hint != ".":
+                    hint_val = int(hint)
+                    active = board.get_active_edges(r, c)
+                    missing_needed = hint_val - active
+
+                    # If the cell only needs ONE more edge to be satisfied, drawing this
+                    # edge will trigger your propagator to lock down the rest of the cell.
+                    if missing_needed == 1:
+                        score += 30
+                    
+                    # Inherently favor larger numbers as they anchor the board
+                    if hint_val == 3:
+                        score += 15
+                    elif hint_val == 2:
+                        score += 5
+
+            return score
+
+        # 2. Sort actions descending based on their heuristic score
+        return sorted(actions, key=score_action, reverse=True)
 
     #AIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIIA
     def actions(self, state: SlitherlinkState):
+        #print(f"Pedindo actions para tabuleiro com {len(state.board.drawn_edges)} arestas. Hash: {hash(state)}")
         if getattr(state, 'is_valid', True) is False:
             return []
 
@@ -499,12 +572,12 @@ class Slitherlink(Problem):
                             edges = board.get_cell_edges(r, c)
                             # Filter: edge must be allowed AND not violate cell limits
                             valid = [e for e in edges
-                                    if e in board.allowed_edges
+                                    if e in board.global_domain
                                     and board.is_action_possible(e)]
                             if valid:
                                 return valid
             # Fallback: no hints at all (unusual), return any allowed edge
-            return [next(iter(board.allowed_edges))] if board.allowed_edges else []
+            return [next(iter(board.global_domain))] if board.global_domain else []
 
         # ----------------------------------------------------------------
         # MID-SEARCH: find all loose-end vertices (degree == 1).
@@ -534,7 +607,7 @@ class Slitherlink(Problem):
             _, _, undrawn = board.get_edges_around_vertex(vertex)
             # An edge is valid if it's still allowed and doesn't break cell limits
             options = [e for e in undrawn
-                    if e in board.allowed_edges
+                    if e in board.global_domain
                     and board.is_action_possible(e)]
 
             # Dead end: this loose end has nowhere to go
@@ -545,7 +618,11 @@ class Slitherlink(Problem):
             if best_options is None or len(options) < len(best_options):
                 best_options = options
 
-        return best_options if best_options is not None else []
+            valid_actions = list(best_options)
+            if not valid_actions:
+                return []
+
+        return self.rank_actions(state, valid_actions)
 
     def result(self, state, action):
         """adiciona uma action que foi selecionada em actions, e faz a
@@ -554,13 +631,14 @@ class Slitherlink(Problem):
         from SATOracle import ConstraintPropagator
 
         # 1 --- CRIAR NOVA BOARD, APLICAR ACTION, E PROPAGAR CONSTRAINTS
-        new_board = state.board.copy()  #copy board
+
+        new_board = state.board.new_state()  #copy board
         #draw action/actions
         if isinstance(action, tuple) and isinstance(action[0], str):
-            new_board.drawn_edges.add(action)
+            new_board.draw_edge(action)
         else:
             for act in action:
-                new_board.drawn_edges.add(act)
+                new_board.draw_edge(act)
         #propagate on new board, and check if valid (propagate altera a new_board em si)
         propagator = ConstraintPropagator(new_board)
         is_valid = propagator.propagate()
@@ -580,8 +658,13 @@ class Slitherlink(Problem):
         if self._has_premature_loop(new_state):
             new_state.is_valid = False
             return new_state
+        
+        # 3 --- SE TEM CELULAS UNREACHABLE E NAO CORRESPONDIDAS, BOARD E INVALIDA
+        if self.is_region_unreachable(new_state):
+            new_state.is_valid = False
+            return new_state
 
-        # 3 --- SE PASSOU POR FILTROS, ENTAO A NOVA BOARD E VALIDA 
+        # 4 --- SE PASSOU POR FILTROS, ENTAO A NOVA BOARD E VALIDA 
         new_state.is_valid = True
         new_state.allowed_actions = is_valid
             
@@ -681,7 +764,118 @@ class Slitherlink(Problem):
 
         return False
 
+    #AIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIIA
+    def is_region_unreachable(self, state) -> bool:
+        """
+        Global topological pruning check.
+        Returns True if any unsatisfied cell is structurally cut off from the
+        current partial loop — meaning no candidate edge of that cell can ever
+        be reached by extending the loop from its current loose ends.
+        """
+        board = state.board
+        drawn = board.all_drawn_edges
+        all_edges = board.all_edges
+        unallowed = board.forbidden_edges
 
+        # ------------------------------------------------------------------
+        # 1. Find loose-end vertices (degree 1 in drawn edges).
+        #    These are the only vertices from which the loop can grow.
+        #    If there are no loose ends and the board is not solved, the loop
+        #    is already closed — nothing more can be drawn.
+        # ------------------------------------------------------------------
+        degree = {}
+        for edge in drawn:
+            t, r, c = edge
+            v1 = (r, c)
+            v2 = (r, c + 1) if t == 'h' else (r + 1, c)
+            degree[v1] = degree.get(v1, 0) + 1
+            degree[v2] = degree.get(v2, 0) + 1
+
+        loose_ends = [v for v, d in degree.items() if d == 1]
+
+        # No loose ends → loop is closed (or empty). Nothing reachable.
+        # An empty board has no drawn edges, so no loose ends either.
+        # In both cases: if any cell is unsatisfied, it cannot be reached.
+        # We only skip the check entirely if the board is already complete,
+        # which goal_test handles separately. Here we just compute reachability.
+        if not loose_ends:
+            # If any unsatisfied hinted cell exists, it's unreachable.
+            for r in range(board.rows):
+                for c in range(board.cols):
+                    hint = board.board[r][c]
+                    if hint == -1:
+                        continue
+                    hint = int(hint)
+                    if board.get_active_edges(r, c) < hint:
+                        return True
+            return False
+
+        # ------------------------------------------------------------------
+        # 2. BFS from all loose ends simultaneously through valid edges.
+        #    "Valid" = in all_edges AND not in forbidden_edges.
+        #    We traverse vertex-to-vertex through candidate edges.
+        # ------------------------------------------------------------------
+        reachable_vertices = set(loose_ends)
+        queue = list(loose_ends)
+
+        # Precompute: vertex → list of candidate edges (not unallowed)
+        # We build this lazily during BFS to avoid scanning all edges upfront.
+        def candidate_edges_at(vr, vc):
+            """All valid (non-forbidden) edges touching vertex (vr, vc)."""
+            possible = [
+                ('h', vr, vc),
+                ('h', vr, vc - 1),
+                ('v', vr, vc),
+                ('v', vr - 1, vc),
+            ]
+            return [e for e in possible if e in all_edges and e not in unallowed]
+
+        while queue:
+            vr, vc = queue.pop(0)
+            for edge in candidate_edges_at(vr, vc):
+                t, r, c = edge
+                v1 = (r, c)
+                v2 = (r, c + 1) if t == 'h' else (r + 1, c)
+                for neighbor in (v1, v2):
+                    if neighbor not in reachable_vertices:
+                        reachable_vertices.add(neighbor)
+                        queue.append(neighbor)
+
+        # ------------------------------------------------------------------
+        # 3. For each unsatisfied hinted cell, check if at least one of its
+        #    candidate (non-forbidden, not yet drawn) edges touches a
+        #    reachable vertex. If none do, the cell is cut off → prune.
+        # ------------------------------------------------------------------
+        for r in range(board.rows):
+            for c in range(board.cols):
+                hint = board.board[r][c]
+                if hint == -1:
+                    continue
+                hint = int(hint)
+
+                active = board.get_active_edges(r, c)
+                if active >= hint:
+                    continue  # already satisfied, skip
+
+                # Check candidate edges: not drawn, not forbidden
+                cell_edges = board.get_cell_edges(r, c)
+                has_reachable = False
+                for edge in cell_edges:
+                    if edge in drawn or edge in unallowed:
+                        continue  # already decided, doesn't count as reachable path
+                    # This edge is still a candidate. Check if either of its
+                    # vertices is reachable from the current loose ends.
+                    t, er, ec = edge
+                    v1 = (er, ec)
+                    v2 = (er, ec + 1) if t == 'h' else (er + 1, ec)
+                    if v1 in reachable_vertices or v2 in reachable_vertices:
+                        has_reachable = True
+                        break
+
+                if not has_reachable:
+                    return True  # this cell is cut off → prune this branch
+
+        return False
 
     #AIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIIA
     def goal_test(self, state: SlitherlinkState):
@@ -739,11 +933,12 @@ class Slitherlink(Problem):
             return False
 
         # Passou em tudo! É a solução!
+        state.board.forbid_edges(state.board.global_forbidden)
+        state.board.draw_edges(state.board.global_drawn)
         return True
 
-    def h(self, node: Node):
-        pass 
-
+    def h(self, node) -> float:
+        pass
 
 
         
