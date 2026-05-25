@@ -1,0 +1,117 @@
+highly optimized constraint Propagator. the actions ranking is rudimentary, so example 4 is slow. for
+Clean_Code3, we will have a rank_actions that is able to incredibly boost example4 performance
+
+
+
+=== test01.txt ===
+DFS Tree | run 1/10 | Solved   | 0.0001s
+DFS Tree | run 2/10 | Solved   | 0.0001s
+DFS Tree | run 3/10 | Solved   | 0.0001s
+DFS Tree | run 4/10 | Solved   | 0.0001s
+DFS Tree | run 5/10 | Solved   | 0.0001s
+DFS Tree | run 6/10 | Solved   | 0.0001s
+DFS Tree | run 7/10 | Solved   | 0.0001s
+DFS Tree | run 8/10 | Solved   | 0.0001s
+DFS Tree | run 9/10 | Solved   | 0.0001s
+DFS Tree | run 10/10 | Solved   | 0.0001s
+DFS Tree AVG: 0.0001s
+
+
+=== test02.txt ===
+DFS Tree | run 1/10 | Solved   | 0.0037s
+DFS Tree | run 2/10 | Solved   | 0.0044s
+DFS Tree | run 3/10 | Solved   | 0.0036s
+DFS Tree | run 4/10 | Solved   | 0.0036s
+DFS Tree | run 5/10 | Solved   | 0.0036s
+DFS Tree | run 6/10 | Solved   | 0.0037s
+DFS Tree | run 7/10 | Solved   | 0.0036s
+DFS Tree | run 8/10 | Solved   | 0.0038s
+DFS Tree | run 9/10 | Solved   | 0.0037s
+DFS Tree | run 10/10 | Solved   | 0.0040s
+DFS Tree AVG: 0.0038s
+
+
+=== test03.txt ===
+DFS Tree | run 1/10 | Solved   | 0.1390s
+DFS Tree | run 2/10 | Solved   | 0.1384s
+DFS Tree | run 3/10 | Solved   | 0.1343s
+DFS Tree | run 4/10 | Solved   | 0.1350s
+DFS Tree | run 5/10 | Solved   | 0.1356s
+DFS Tree | run 6/10 | Solved   | 0.1341s
+DFS Tree | run 7/10 | Solved   | 0.1340s
+DFS Tree | run 8/10 | Solved   | 0.1355s
+DFS Tree | run 9/10 | Solved   | 0.1344s
+DFS Tree | run 10/10 | Solved   | 0.1345s
+DFS Tree AVG: 0.1355s
+
+
+=== test04.txt ===
+DFS Tree | run 1/10 | Timeout  | 30.0000s
+DFS Tree | run 2/10 | Timeout  | 30.0000s
+DFS Tree | run 3/10 | Timeout  | 30.0000s
+DFS Tree | run 4/10 | Timeout  | 30.0000s
+DFS Tree | run 5/10 | Timeout  | 30.0000s
+DFS Tree | run 6/10 | Timeout  | 30.0000s
+DFS Tree | run 7/10 | Timeout  | 30.0000s
+DFS Tree | run 8/10 | Timeout  | 30.0000s
+DFS Tree | run 9/10 | Timeout  | 30.0000s
+DFS Tree | run 10/10 | Timeout  | 30.0000s
+DFS Tree AVG: 30.0000s
+
+
+=== test05.txt ===
+DFS Tree | run 1/10 | Solved   | 0.0322s
+DFS Tree | run 2/10 | Solved   | 0.0310s
+DFS Tree | run 3/10 | Solved   | 0.0311s
+DFS Tree | run 4/10 | Solved   | 0.0315s
+DFS Tree | run 5/10 | Solved   | 0.0304s
+DFS Tree | run 6/10 | Solved   | 0.0299s
+DFS Tree | run 7/10 | Solved   | 0.0305s
+DFS Tree | run 8/10 | Solved   | 0.0310s
+DFS Tree | run 9/10 | Solved   | 0.0299s
+DFS Tree | run 10/10 | Solved   | 0.0308s
+DFS Tree AVG: 0.0308s
+
+
+=== test06.txt ===
+DFS Tree | run 1/10 | Solved   | 0.0668s
+DFS Tree | run 2/10 | Solved   | 0.0648s
+DFS Tree | run 3/10 | Solved   | 0.0684s
+DFS Tree | run 4/10 | Solved   | 0.0663s
+DFS Tree | run 5/10 | Solved   | 0.0676s
+DFS Tree | run 6/10 | Solved   | 0.0672s
+DFS Tree | run 7/10 | Solved   | 0.0684s
+DFS Tree | run 8/10 | Solved   | 0.0656s
+DFS Tree | run 9/10 | Solved   | 0.0662s
+DFS Tree | run 10/10 | Solved   | 0.0676s
+DFS Tree AVG: 0.0669s
+
+
+=== test08.txt ===
+DFS Tree | run 1/10 | Solved   | 0.0492s
+DFS Tree | run 2/10 | Solved   | 0.0494s
+DFS Tree | run 3/10 | Solved   | 0.0492s
+DFS Tree | run 4/10 | Solved   | 0.0492s
+DFS Tree | run 5/10 | Solved   | 0.0482s
+DFS Tree | run 6/10 | Solved   | 0.0499s
+DFS Tree | run 7/10 | Solved   | 0.0483s
+DFS Tree | run 8/10 | Solved   | 0.0492s
+DFS Tree | run 9/10 | Solved   | 0.0482s
+DFS Tree | run 10/10 | Solved   | 0.0490s
+DFS Tree AVG: 0.0490s
+
+
+=== test09.txt ===
+DFS Tree | run 1/10 | Solved   | 0.0055s
+DFS Tree | run 2/10 | Solved   | 0.0053s
+DFS Tree | run 3/10 | Solved   | 0.0052s
+DFS Tree | run 4/10 | Solved   | 0.0054s
+DFS Tree | run 5/10 | Solved   | 0.0054s
+DFS Tree | run 6/10 | Solved   | 0.0052s
+DFS Tree | run 7/10 | Solved   | 0.0053s
+DFS Tree | run 8/10 | Solved   | 0.0054s
+DFS Tree | run 9/10 | Solved   | 0.0053s
+DFS Tree | run 10/10 | Solved   | 0.0058s
+DFS Tree AVG: 0.0054s
+
+test10.txt missing

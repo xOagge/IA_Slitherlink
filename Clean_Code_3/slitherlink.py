@@ -484,16 +484,16 @@ class Slitherlink(Problem):
         # print(self.initial.board.print_complete())
 
     #AIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIIA
-    #AIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIIA
     def rank_actions(self, state: SlitherlinkState, actions: list) -> list:
         """
         Orders actions from most promising to least promising to optimize DFS branching.
-        Prioritizes moves that close/extinguish loose ends.
+        Does not alter legality; only provides a heuristic sorting.
         """
         board = state.board
         drawn = board.all_drawn_edges
 
         # 1. Precompute vertex degrees for O(1) lookups
+        # We only care about vertices currently touched by the snake
         vertex_degrees = {}
         for edge in drawn:
             v1, v2 = board.get_edge_vertices(edge)
@@ -501,54 +501,57 @@ class Slitherlink(Problem):
             vertex_degrees[v2] = vertex_degrees.get(v2, 0) + 1
 
         def score_action(action):
-            # Proteção caso a ação seja um tuplo de múltiplas arestas no futuro
+            # Garante que processamos apenas a aresta, mesmo que a action venha num tuplo do Super Look-Ahead
             edge = action[0] if isinstance(action, tuple) and isinstance(action[0], tuple) else action
             
+            score = 0
             v1, v2 = board.get_edge_vertices(edge)
             d1 = vertex_degrees.get(v1, 0)
             d2 = vertex_degrees.get(v2, 0)
 
-            score = 0
-
-            # ==========================================================
-            # BEST CASE:
-            # Connects TWO loose ends -> closes chain section
-            # ==========================================================
+            # --- METRIC 1: CONNECTIVITY & FRAGMENTATION ---
+            # Highest priority: Extending or joining existing paths.
+            
             if d1 == 1 and d2 == 1:
-                score += 1000
-
-            # ==========================================================
-            # Connects ONE loose end
-            # ==========================================================
+                # Joins two loose ends. 
+                # If it joins two different segments, it drastically reduces fragmentation.
+                # If it closes a premature loop, your propagator will kill it INSTANTLY. 
+                # Either way, it's a fantastic move for DFS (progress or fast-fail).
+                score += 100
             elif d1 == 1 or d2 == 1:
-                score += 200
-
-            # ==========================================================
-            # Extends isolated edge
-            # ==========================================================
+                # Extends an existing loose end.
+                score += 50
             elif d1 == 0 and d2 == 0:
-                score -= 50
+                # Creates a brand new isolated segment in the middle of nowhere.
+                # Highly penalized as it increases ambiguity and fragmentation.
+                score -= 20
 
-            # ==========================================================
-            # Prefer creating degree-2 vertices
-            # ==========================================================
-            if d1 == 1:
-                score += 50
+            # --- METRIC 2: CELL PRESSURE & PROGRESS ---
+            # Prioritize edges that help satisfy highly constrained cells.
+            
+            adj_cells = board.cells_adjacent_to_edge(edge)
+            for r, c in adj_cells:
+                hint = board.board[r][c]
+                if hint != -1 and hint != ".":
+                    hint_val = int(hint)
+                    active = board.get_active_edges(r, c)
+                    missing_needed = hint_val - active
 
-            if d2 == 1:
-                score += 50
-
-            # ==========================================================
-            # Penalize branching risk
-            # ==========================================================
-            if d1 >= 2 or d2 >= 2:
-                score -= 1000
+                    # If the cell only needs ONE more edge to be satisfied, drawing this
+                    # edge will trigger your propagator to lock down the rest of the cell.
+                    if missing_needed == 1:
+                        score += 30
+                    
+                    # Inherently favor larger numbers as they anchor the board
+                    if hint_val == 3:
+                        score += 15
+                    elif hint_val == 2:
+                        score += 5
 
             return score
 
         # 2. Sort actions descending based on their heuristic score
-        print(sorted(actions, key=score_action, reverse=True)  )
-        return sorted(actions, key=score_action, reverse=True)      
+        return sorted(actions, key=score_action, reverse=True)
 
     #AIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIIA
     def actions(self, state: SlitherlinkState):
