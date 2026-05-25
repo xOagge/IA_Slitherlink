@@ -492,44 +492,41 @@ class Slitherlink(Problem):
         board = state.board
         drawn = board.all_drawn_edges
 
-        # 1. Precompute vertex degrees for O(1) lookups
-        # We only care about vertices currently touched by the snake
+        # 1) GET ALL VERTICES DEGREES
         vertex_degrees = {}
         for edge in drawn:
             v1, v2 = board.get_edge_vertices(edge)
-            vertex_degrees[v1] = vertex_degrees.get(v1, 0) + 1
-            vertex_degrees[v2] = vertex_degrees.get(v2, 0) + 1
+            if v1 in vertex_degrees: vertex_degrees[v1] = vertex_degrees[v1] + 1
+            else: vertex_degrees[v1] = 1
 
-        def score_action(action):
-            # Garante que processamos apenas a aresta, mesmo que a action venha num tuplo do Super Look-Ahead
-            edge = action[0] if isinstance(action, tuple) and isinstance(action[0], tuple) else action
-            
+            if v2 in vertex_degrees: vertex_degrees[v2] = vertex_degrees[v2] + 1
+            else: vertex_degrees[v2] = 1
+
+        def score_action(action):            
             score = 0
-            v1, v2 = board.get_edge_vertices(edge)
+            v1, v2 = board.get_edge_vertices(action)
             d1 = vertex_degrees.get(v1, 0)
             d2 = vertex_degrees.get(v2, 0)
 
-            # --- METRIC 1: CONNECTIVITY & FRAGMENTATION ---
-            # Highest priority: Extending or joining existing paths.
+            # 1) PRIORIZAR FECHAR LOOPS, EXTENDER EXTREMOS, 
+            # PENALIZA FRAGMENTACAO (da forma como temos o codigo apenas devem ser candidatos
+            # acoes em loose edges, mas caso tenhamos um erro)
             
+            #se os dois vertices ja teem degree 1, vai fechar um loop
             if d1 == 1 and d2 == 1:
-                # Joins two loose ends. 
-                # If it joins two different segments, it drastically reduces fragmentation.
-                # If it closes a premature loop, your propagator will kill it INSTANTLY. 
-                # Either way, it's a fantastic move for DFS (progress or fast-fail).
                 score += 100
+            #else, se um dos vertices for degree 1, vai extender loose edge
             elif d1 == 1 or d2 == 1:
                 # Extends an existing loose end.
                 score += 50
+            #else, se degree e 0 nos dois vertices, estamos a desenhar no nada
             elif d1 == 0 and d2 == 0:
-                # Creates a brand new isolated segment in the middle of nowhere.
-                # Highly penalized as it increases ambiguity and fragmentation.
                 score -= 20
 
-            # --- METRIC 2: CELL PRESSURE & PROGRESS ---
-            # Prioritize edges that help satisfy highly constrained cells.
+
+            # 2)
             
-            adj_cells = board.cells_adjacent_to_edge(edge)
+            adj_cells = board.cells_adjacent_to_edge(action)
             for r, c in adj_cells:
                 hint = board.board[r][c]
                 if hint != -1 and hint != ".":
