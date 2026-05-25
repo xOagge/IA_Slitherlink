@@ -460,8 +460,8 @@ class Slitherlink(Problem):
         Board.global_domain = Board.all_edges - Board.global_forbidden
         Board.recently_changed_edges = Board.global_drawn | Board.global_forbidden
 
-        print("--- Board after Initial Constraints (Before Cascade Propagation) ---")
-        print(Board.print_complete())
+        # print("--- Board after Initial Constraints (Before Cascade Propagation) ---")
+        # print(Board.print_complete())
 
         # Correr o Motor de Dedução (Efeito Cascata)
         propagator = ConstraintPropagator(Board)
@@ -481,19 +481,13 @@ class Slitherlink(Problem):
         self.visited_hashes = set()
 
         #mostra InitialPropagator + ConstraintPropagator
-        print("--- Board after InitialPropagator + ConstraintPropagator ---")
-        print(self.initial.board.print_complete())
+        # print("--- Board after InitialPropagator + ConstraintPropagator ---")
+        # print(self.initial.board.print_complete())
 
     #AIAIAIAIAIAIAIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIAIAIAIIAIAIAIAIAIAIIA
     def rank_actions(self, board: Board, actions: list) -> list:
-        """como melhor descrito em docsting de actions, vamos para cada action
-        desenhar uma edge, que fica registada em recently_changed_edges,
-        propagamos essa board, e assim para cada action temos a result board
-        que resulta de consequencia direta de aplicar essa action."""
-
         from SATOracle import ConstraintPropagator
 
-        #Vertices Degrees de state, usado em passo 3)
         degree_before = {}
         for edge in board.all_drawn_edges:
             v1, v2 = board.get_edge_vertices(edge)
@@ -501,41 +495,34 @@ class Slitherlink(Problem):
             degree_before[v2] = degree_before.get(v2, 0) + 1
         loose_ends_before = sum(1 for d in degree_before.values() if d == 1)
 
-        scores = []
+        valid_scored_actions = [] # Guardar apenas ações que sobrevivem à propagação
+
         for action in actions:
-            board_copy = board.new_state() #copiar estado
-            board_copy.draw_edge(action) #desenhar edge, regista em recently_changed_edges
+            board_copy = board.new_state()
+            board_copy.draw_edge(action)
 
-
-            #propagate altera board_copy e da return a allowed edges
             PP = ConstraintPropagator(board_copy)
             is_valid = PP.propagate()
-            #se action levou a board invalida, rejeitar acao
-            if is_valid == False: continue
+            
+            # SE A AÇÃO LEVA A UMA CONTRADIÇÃO, IGNORAR COMPLETAMENTE
+            if is_valid is False: 
+                continue
 
-            #get board actions
-            #actions = self.calc_board_action_edges(board_copy)
-            #obter informacao da propagacao
             (cells3, cells2, cells1) = PP.propagate_cells_info()
             (drawn_m, drawn_f) = PP.propagate_edges_info()
 
-            #agora vamos comparar a board_copy, propagada com consequencia de action,
-            #com state, para verificarmos o que mudou
-
             score = 0
             
-            #1) VALORIZAR PREENCHER CELULAS
+            # 1) VALORIZAR PREENCHER CELULAS
             score += len(cells3) * 100
             score += len(cells1) * 80
             score += len(cells2) * 50
 
-            #2) VALORIZAR DESENHAR MAIS EDGES
+            # 2) VALORIZAR DESENHAR MAIS EDGES EM CASCATA
             score += len(drawn_m) * 20
             score += len(drawn_f) * 5
 
-            #3) VALORIZAR ESTADOS QUE LEVEM A MENOS PONTAS SOLTAS
-            
-            #Vertices Degrees de board_copy
+            # 3) AVALIAR PONTAS SOLTAS
             degree_after = {}
             for edge in board_copy.all_drawn_edges:
                 v1, v2 = board_copy.get_edge_vertices(edge)
@@ -543,72 +530,105 @@ class Slitherlink(Problem):
                 degree_after[v2] = degree_after.get(v2, 0) + 1
             loose_ends_after = sum(1 for d in degree_after.values() if d == 1)
 
-            # diferenca de vertices degree 1 entre new_state e state. quanto menos 
-            #pontas soltas, melhor
             loose_end_delta = loose_ends_after - loose_ends_before
-            score -= loose_end_delta * 200 #reward a menos deg1, penalizar mais v1
+            score -= loose_end_delta * 200 
 
-            # valorizar ainda mais estados que teem apenas dois vertices deg1
             if loose_ends_after == 2:
                 score += 40
-            #se new_state produz uma board sem pontas soltas, temos de avaliar imediatamente,
-            #pois ou e solucao, ou e dead-end, e exclui-se logo
             elif loose_ends_after == 0 and len(board_copy.all_drawn_edges) > 0:
                 score += 1000
 
-            scores.append((action, score))
+            valid_scored_actions.append((action, score))
 
-        print("scored actions")
-        print(scores)
+        # Ordenar as que sobreviveram pelo melhor score
+        valid_scored_actions.sort(key=lambda x: x[1], reverse=True)
+        
+        # Devolver apenas as ações ordenadas (sem os scores)
+        return [action for action, score in valid_scored_actions]
 
-
-        scored_actions = [(a, s) for a, s in scores]
-
-        score_dict = dict(scored_actions)
-
-        def score_action(action):
-            return score_dict.get(action, float("-inf"))  # invalid = worst score
-
-        result = sorted(score_dict.keys(), key=score_action, reverse=True)
-
-        print("Rank actions")
-        print(result)
-        return result
-
-    def calc_board_action_edges(self, board:Board):
-        """give a board, calculates all the action candidate edges"""
+    def calc_board_action_edges(self, board: Board):
+        """
+        Uses MRV (Minimum Remaining Values) to find candidate edges.
+        Instead of returning all loose ends, it only returns the edges 
+        for the single most constrained vertex.
+        """
         degree = {}
         for edge in board.all_drawn_edges:
             v1, v2 = board.get_edge_vertices(edge)
             degree[v1] = degree.get(v1, 0) + 1
             degree[v2] = degree.get(v2, 0) + 1
         
-        deg1_v = {v for v, deg in degree.items() if deg == 1}
-
-        action_edges = set()
+        deg1_v = [v for v, deg in degree.items() if deg == 1]
+        
+        best_edges = set()
+        min_options = 999
+        
         for v in deg1_v:
-            undrawn = board.get_edges_around_vertex(v)[2]
-            action_edges.update(undrawn)
+            # Pega nas arestas não desenhadas à volta deste vértice
+            _, _, undrawn = board.get_edges_around_vertex(v)
+            
+            # Filtro rápido: remove logo opções que chocam com 0 ou estouram uma célula
+            safe_edges = [e for e in undrawn if self._is_safe_action(board, e)]
+            
+            # Se encontrou um beco sem saída imediato, retorna vazio para forçar backtrack
+            if len(safe_edges) == 0:
+                return set()
+                
+            # MRV: Guarda apenas as arestas do vértice com menos opções
+            if len(safe_edges) < min_options:
+                min_options = len(safe_edges)
+                best_edges = set(safe_edges)
+                
+                # Early exit: se só há 1 caminho seguro, não precisamos de procurar mais
+                if min_options == 1:
+                    break
+                    
+        return best_edges
 
-        # print("action_edges")
-        # print(action_edges)
-        return action_edges
+    def _is_safe_action(self, board: Board, action) -> bool:
+        """Filtro ultraleve para evitar propagar ações obviamente erradas."""
+        cells_touched = board.cells_adjacent_to_edge(action)
+        for r, c in cells_touched:
+            hint = board.board[r][c]
+            if hint == -1 or hint == ".": continue
+            hint = int(hint)
+            if hint == 0: return False # Regra do zero
+            
+            # Verifica saturação
+            cell_edges = board.get_cell_edges(r, c)
+            cnt_drawn = sum(1 for e in cell_edges if e in board.all_drawn_edges)
+            if cnt_drawn >= hint: return False
+        return True
 
     def actions(self, state: SlitherlinkState):
-        """Obtemos todas as actions possiveis de uma board, e damos
-        return em ordem de prioridade usando rank_actions. ao usar
-        Propagator.propagate conseguimos avaliar melhor cada acao, pois
-        por exemplo. Uma action que feche um loop vale bastante, mas uma 
-        acao que, atraves de propagator, leve e fechar um loop, competar um 3
-        , e diminuir o espaco de edges permitidas, e mais valiosa. nesse sentido,
-        em vez de avaliarmos as actions pela single edge que repesentam, vamos
-        considerar toda a consequencia direta dessa acao"""
+        if not state.is_valid:
+            return ()
 
-        valid_actions = self.calc_board_action_edges(state.board)
-        print("valid actions")
-        print(valid_actions)
-        return self.rank_actions(state.board, valid_actions)
-
+        # 1. Tentar encontrar as melhores ações baseadas nos vértices (MRV)
+        valid_actions = list(self.calc_board_action_edges(state.board))
+        
+        if valid_actions:
+            # 2. Se temos candidatos, usamos o Propagator para ver o futuro e rankear
+            ranked = self.rank_actions(state.board, valid_actions)
+            return tuple(ranked)
+            
+        # 3. FALLBACK (Para o início do jogo, quando não há pontas soltas)
+        available = state.board.all_edges - state.board.all_drawn_edges - state.board.all_forbidden_edges
+        
+        for r in range(state.board.rows):
+            for c in range(state.board.cols):
+                hint = state.board.board[r][c]
+                if hint == 3: # Encontrou o melhor ponto de partida
+                    cell_edges = state.board.get_cell_edges(r, c)
+                    valid_edges = [e for e in cell_edges if e in available and self._is_safe_action(state.board, e)]
+                    if valid_edges:
+                        # Propagamos as opções iniciais para ver qual é a melhor
+                        return tuple(self.rank_actions(state.board, valid_edges))
+                        
+        if available:
+            return (sorted(list(available))[0],)
+            
+        return ()
 
     def result(self, state, action):
         """adiciona uma action que foi selecionada em actions, e faz a
@@ -630,7 +650,7 @@ class Slitherlink(Problem):
         is_valid = propagator.propagate()
         new_state = SlitherlinkState(new_board) #define new state
 
-        print(new_state.board.print_complete())
+        #print(new_state.board.print_complete())
 
         # 2 --- VERIFICAR SE NOVA BOARD E VALIDA
 
@@ -926,8 +946,6 @@ class Slitherlink(Problem):
     def h(self, node) -> float:
         pass
 
-
-        
 
 
 if __name__ == "__main__":
