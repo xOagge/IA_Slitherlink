@@ -1,0 +1,2 @@
+Previous was instable on the tests, but managed to pass all at different runs, so
+willt ry to optimize the code generally

@@ -1,5 +1,7 @@
 Clean_Code4 applies the MRV logic to better select actions.
 
+por alguma razao estupida este codigo APESAR DE VIR DE GITLAB REPO DEPOIS DE COPIAR
+O CLEAN CODE 5 PARA LA, E MAIS RAPIDO E ESTAVEL WTF
 
 === test01.txt ===
 DFS Tree | run 1/10 | Solved   | 0.0001s

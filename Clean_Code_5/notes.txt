@@ -1,0 +1,131 @@
+ConstraintPropagator where now not it does self.Board.recently_changed_edges() = set() near thestart of each loop so that nowit really only
+interacts with the edges,v ertices, and cells, strictly necessary
+
+fez o test4 ser mais rapido
+
+o test7 pode parecer mais lento ams depnde da sorte
+
+=== test01.txt ===
+DFS Tree | run 1/10 | Solved   | 0.0001s
+DFS Tree | run 2/10 | Solved   | 0.0001s
+DFS Tree | run 3/10 | Solved   | 0.0001s
+DFS Tree | run 4/10 | Solved   | 0.0001s
+DFS Tree | run 5/10 | Solved   | 0.0001s
+DFS Tree | run 6/10 | Solved   | 0.0001s
+DFS Tree | run 7/10 | Solved   | 0.0001s
+DFS Tree | run 8/10 | Solved   | 0.0001s
+DFS Tree | run 9/10 | Solved   | 0.0001s
+DFS Tree | run 10/10 | Solved   | 0.0001s
+DFS Tree AVG: 0.0001s
+
+
+=== test02.txt ===
+DFS Tree | run 1/10 | Solved   | 0.0080s
+DFS Tree | run 2/10 | Solved   | 0.0068s
+DFS Tree | run 3/10 | Solved   | 0.0062s
+DFS Tree | run 4/10 | Solved   | 0.0063s
+DFS Tree | run 5/10 | Solved   | 0.0065s
+DFS Tree | run 6/10 | Solved   | 0.0062s
+DFS Tree | run 7/10 | Solved   | 0.0062s
+DFS Tree | run 8/10 | Solved   | 0.0061s
+DFS Tree | run 9/10 | Solved   | 0.0061s
+DFS Tree | run 10/10 | Solved   | 0.0059s
+DFS Tree AVG: 0.0064s
+
+
+=== test03.txt ===
+DFS Tree | run 1/10 | Solved   | 0.2021s
+DFS Tree | run 2/10 | Solved   | 0.2033s
+DFS Tree | run 3/10 | Solved   | 0.2033s
+DFS Tree | run 4/10 | Solved   | 0.2046s
+DFS Tree | run 5/10 | Solved   | 0.2035s
+DFS Tree | run 6/10 | Solved   | 0.2025s
+DFS Tree | run 7/10 | Solved   | 0.2034s
+DFS Tree | run 8/10 | Solved   | 0.2075s
+DFS Tree | run 9/10 | Solved   | 0.2060s
+DFS Tree | run 10/10 | Solved   | 0.2049s
+DFS Tree AVG: 0.2041s
+
+
+=== test04.txt ===
+DFS Tree | run 1/10 | Solved   | 0.6907s
+DFS Tree | run 2/10 | Solved   | 0.6774s
+DFS Tree | run 3/10 | Solved   | 0.6810s
+DFS Tree | run 4/10 | Solved   | 0.6849s
+DFS Tree | run 5/10 | Solved   | 0.6758s
+DFS Tree | run 6/10 | Solved   | 0.6703s
+DFS Tree | run 7/10 | Solved   | 0.6766s
+DFS Tree | run 8/10 | Solved   | 0.6789s
+DFS Tree | run 9/10 | Solved   | 0.6822s
+DFS Tree | run 10/10 | Solved   | 0.6765s
+DFS Tree AVG: 0.6794s
+
+
+=== test05.txt ===
+DFS Tree | run 1/10 | Solved   | 0.0874s
+DFS Tree | run 2/10 | Solved   | 0.0857s
+DFS Tree | run 3/10 | Solved   | 0.0846s
+DFS Tree | run 4/10 | Solved   | 0.0858s
+DFS Tree | run 5/10 | Solved   | 0.0849s
+DFS Tree | run 6/10 | Solved   | 0.0857s
+DFS Tree | run 7/10 | Solved   | 0.0853s
+DFS Tree | run 8/10 | Solved   | 0.0883s
+DFS Tree | run 9/10 | Solved   | 0.0876s
+DFS Tree | run 10/10 | Solved   | 0.0868s
+DFS Tree AVG: 0.0862s
+
+
+=== test06.txt ===
+DFS Tree | run 1/10 | Solved   | 0.1131s
+DFS Tree | run 2/10 | Solved   | 0.1148s
+DFS Tree | run 3/10 | Solved   | 0.1137s
+DFS Tree | run 4/10 | Solved   | 0.1203s
+DFS Tree | run 5/10 | Solved   | 0.1132s
+DFS Tree | run 6/10 | Solved   | 0.1150s
+DFS Tree | run 7/10 | Solved   | 0.1144s
+DFS Tree | run 8/10 | Solved   | 0.1131s
+DFS Tree | run 9/10 | Solved   | 0.1170s
+DFS Tree | run 10/10 | Solved   | 0.1142s
+DFS Tree AVG: 0.1149s
+
+
+=== test07.txt ===
+DFS Tree | run 1/10 | Solved   | 22.1131s
+DFS Tree | run 2/10 | Solved   | 22.3900s
+DFS Tree | run 3/10 | Solved   | 22.6693s
+DFS Tree | run 4/10 | Solved   | 22.3627s
+DFS Tree | run 5/10 | Solved   | 22.2907s
+DFS Tree | run 6/10 | Solved   | 22.8244s
+DFS Tree | run 7/10 | Solved   | 22.6035s
+DFS Tree | run 8/10 | Solved   | 22.5209s
+DFS Tree | run 9/10 | Solved   | 23.5482s
+DFS Tree | run 10/10 | Solved   | 22.4626s
+DFS Tree AVG: 22.5785s
+
+
+=== test08.txt ===
+DFS Tree | run 1/10 | Solved   | 0.0724s
+DFS Tree | run 2/10 | Solved   | 0.0714s
+DFS Tree | run 3/10 | Solved   | 0.0712s
+DFS Tree | run 4/10 | Solved   | 0.0711s
+DFS Tree | run 5/10 | Solved   | 0.0717s
+DFS Tree | run 6/10 | Solved   | 0.0705s
+DFS Tree | run 7/10 | Solved   | 0.0742s
+DFS Tree | run 8/10 | Solved   | 0.0724s
+DFS Tree | run 9/10 | Solved   | 0.0732s
+DFS Tree | run 10/10 | Solved   | 0.0723s
+DFS Tree AVG: 0.0720s
+
+
+=== test09.txt ===
+DFS Tree | run 1/10 | Solved   | 0.0060s
+DFS Tree | run 2/10 | Solved   | 0.0061s
+DFS Tree | run 3/10 | Solved   | 0.0062s
+DFS Tree | run 4/10 | Solved   | 0.0061s
+DFS Tree | run 5/10 | Solved   | 0.0062s
+DFS Tree | run 6/10 | Solved   | 0.0063s
+DFS Tree | run 7/10 | Solved   | 0.0062s
+DFS Tree | run 8/10 | Solved   | 0.0062s
+DFS Tree | run 9/10 | Solved   | 0.0067s
+DFS Tree | run 10/10 | Solved   | 0.0062s
+DFS Tree AVG: 0.0062s
